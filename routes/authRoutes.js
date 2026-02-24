@@ -1,0 +1,83 @@
+const express = require('express');
+const router = express.Router();
+const { body } = require('express-validator');
+const {
+    register,
+    login,
+    getProfile,
+    createUser
+} = require('../controllers/authController');
+const authMiddleware = require('../middleware/authMiddleware');
+const requireRole = require('../middleware/roleMiddleware');
+
+// Validation rules for public registration (Author only - no role field)
+const registerValidation = [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage('Name is required')
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Name must be between 2 and 100 characters'),
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please provide a valid email'),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+        .isLength({ min: 6 })
+        .withMessage('Password must be at least 6 characters long')
+];
+
+// Validation rules for admin user creation
+const createUserValidation = [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage('Name is required')
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Name must be between 2 and 100 characters'),
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please provide a valid email'),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+        .isLength({ min: 6 })
+        .withMessage('Password must be at least 6 characters long'),
+    body('role')
+        .notEmpty()
+        .withMessage('Role is required')
+        .isIn(['Editor', 'Reviewer', 'Sub Editor'])
+        .withMessage('Invalid role. Allowed roles: Editor, Reviewer, Sub Editor')
+];
+
+const loginValidation = [
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please provide a valid email'),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+];
+
+// Public routes
+router.post('/register', registerValidation, register);
+router.post('/login', loginValidation, login);
+
+// Protected routes
+router.get('/profile', authMiddleware, getProfile);
+
+// Admin routes (Secretary only)
+router.post('/admin/create-user', authMiddleware, requireRole('Secretary'), createUserValidation, createUser);
+
+module.exports = router;
+
