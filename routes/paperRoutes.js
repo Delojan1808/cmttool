@@ -61,12 +61,12 @@ router.post(
 // Get current user's papers (All authenticated users)
 router.get('/my-papers', authMiddleware, getMyPapers);
 
-// Get all users with Reviewer role (Secretary only)
+// Get all users with Reviewer role (Editor, Sub Editor only)
 // NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID
 router.get(
     '/reviewers',
     authMiddleware,
-    requireRole('Secretary'),
+    requireRole('Editor', 'Sub Editor'),
     getReviewers
 );
 
@@ -84,22 +84,22 @@ router.get('/:id', authMiddleware, getPaperById);
 // Update paper metadata (Author only - permission checked in controller)
 router.put('/:id', authMiddleware, updatePaper);
 
-// Assign a reviewer to a paper (Secretary only)
+// Assign a reviewer to a paper (Editor, Sub Editor only)
 router.put(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary'),
+    requireRole('Editor', 'Sub Editor'),
     assignReviewer
 );
 
 // Delete paper (Author or Secretary - permission checked in controller)
 router.delete('/:id', authMiddleware, deletePaper);
 
-// Unassign reviewer from a paper (Secretary only)
+// Unassign reviewer from a paper (Editor, Sub Editor only)
 router.delete(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary'),
+    requireRole('Editor', 'Sub Editor'),
     unassignReviewer
 );
 

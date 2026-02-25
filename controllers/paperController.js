@@ -1,5 +1,6 @@
 const Paper = require('../models/Paper');
 const User = require('../models/User');
+const ProfessionalField = require('../models/ProfessionalField');
 const fs = require('fs');
 const path = require('path');
 
@@ -136,6 +137,22 @@ const getAllPapers = async (req, res) => {
         if (status) filter.status = status;
         if (category) filter.category = category;
         if (author) filter.author = author;
+
+        // Restrict Sub-Editors to only see papers that belong to their assigned Professional Fields
+        if (req.user.role === 'Sub Editor') {
+            const assignedFields = await ProfessionalField.find({ subEditor: req.user._id });
+            const allowedCategories = assignedFields.map(f => f.name);
+
+            if (category) {
+                // If they requested a category they don't have access to, force empty query
+                if (!allowedCategories.includes(category)) {
+                    filter.category = { $in: [] };
+                }
+            } else {
+                // Show everything they have access to
+                filter.category = { $in: allowedCategories };
+            }
+        }
 
         const papers = await Paper.find(filter)
             .populate('author', 'name email')
@@ -360,7 +377,11 @@ const downloadPaper = async (req, res) => {
 // @access  Private (Secretary)
 const getReviewers = async (req, res) => {
     try {
-        const reviewers = await User.find({ role: 'Reviewer' }).select('name email professionalField');
+        const query = { role: 'Reviewer' };
+        if (req.query.category) {
+            query.professionalField = req.query.category;
+        }
+        const reviewers = await User.find(query).select('name email professionalField');
 
         res.status(200).json({
             success: true,
@@ -382,11 +403,11 @@ const getReviewers = async (req, res) => {
 // @access  Private (Secretary)
 const assignReviewer = async (req, res) => {
     try {
-        // Only Secretary can assign reviewers
-        if (req.user.role !== 'Secretary') {
+        // Only Editor or Sub Editor can assign reviewers
+        if (!['Editor', 'Sub Editor'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only Secretaries can assign reviewers'
+                message: 'Only Editors and Sub Editors can assign reviewers'
             });
         }
 
@@ -398,8 +419,27 @@ const assignReviewer = async (req, res) => {
             });
         }
 
+        const paper = await Paper.findById(req.params.id);
+        if (!paper) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paper not found'
+            });
+        }
+
+        // If sub editor, they must be assigned to this category
+        if (req.user.role === 'Sub Editor') {
+            const field = await ProfessionalField.findOne({ name: paper.category, subEditor: req.user._id });
+            if (!field) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You are not the assigned Sub Editor for this paper's category"
+                });
+            }
+        }
+
         // Validate that the reviewer exists and has the Reviewer role
-        const reviewer = await User.findById(reviewerId).select('name email role');
+        const reviewer = await User.findById(reviewerId).select('name email role professionalField');
         if (!reviewer || reviewer.role !== 'Reviewer') {
             return res.status(404).json({
                 success: false,
@@ -407,11 +447,11 @@ const assignReviewer = async (req, res) => {
             });
         }
 
-        const paper = await Paper.findById(req.params.id);
-        if (!paper) {
-            return res.status(404).json({
+        // Enforce the requirement that the reviewer's professional field matches the paper category
+        if (reviewer.professionalField !== paper.category) {
+            return res.status(400).json({
                 success: false,
-                message: 'Paper not found'
+                message: "Reviewer's professional field does not match the paper's category"
             });
         }
 
@@ -445,11 +485,11 @@ const assignReviewer = async (req, res) => {
 // @access  Private (Secretary)
 const unassignReviewer = async (req, res) => {
     try {
-        // Only Secretary can unassign reviewers
-        if (req.user.role !== 'Secretary') {
+        // Only Editor or Sub Editor can unassign reviewers
+        if (!['Editor', 'Sub Editor'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only Secretaries can unassign reviewers'
+                message: 'Only Editors and Sub Editors can unassign reviewers'
             });
         }
 
@@ -459,6 +499,17 @@ const unassignReviewer = async (req, res) => {
                 success: false,
                 message: 'Paper not found'
             });
+        }
+
+        // If sub editor, they must be assigned to this category
+        if (req.user.role === 'Sub Editor') {
+            const field = await ProfessionalField.findOne({ name: paper.category, subEditor: req.user._id });
+            if (!field) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You are not the assigned Sub Editor for this paper's category"
+                });
+            }
         }
 
         if (!paper.reviewer) {
