@@ -11,7 +11,10 @@ const {
     getPaperById,
     updatePaper,
     deletePaper,
-    downloadPaper
+    downloadPaper,
+    getReviewers,
+    assignReviewer,
+    unassignReviewer
 } = require('../controllers/paperController');
 
 // Validation for paper metadata
@@ -58,6 +61,15 @@ router.post(
 // Get current user's papers (All authenticated users)
 router.get('/my-papers', authMiddleware, getMyPapers);
 
+// Get all users with Reviewer role (Secretary only)
+// NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID
+router.get(
+    '/reviewers',
+    authMiddleware,
+    requireRole('Secretary'),
+    getReviewers
+);
+
 // Get all papers (Editor, Sub Editor, Secretary only)
 router.get(
     '/',
@@ -72,8 +84,24 @@ router.get('/:id', authMiddleware, getPaperById);
 // Update paper metadata (Author only - permission checked in controller)
 router.put('/:id', authMiddleware, updatePaper);
 
+// Assign a reviewer to a paper (Secretary only)
+router.put(
+    '/:id/assign-reviewer',
+    authMiddleware,
+    requireRole('Secretary'),
+    assignReviewer
+);
+
 // Delete paper (Author or Secretary - permission checked in controller)
 router.delete('/:id', authMiddleware, deletePaper);
+
+// Unassign reviewer from a paper (Secretary only)
+router.delete(
+    '/:id/assign-reviewer',
+    authMiddleware,
+    requireRole('Secretary'),
+    unassignReviewer
+);
 
 // Download paper PDF (All authenticated users - permission checked in controller)
 router.get('/:id/download', authMiddleware, downloadPaper);

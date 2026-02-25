@@ -28,7 +28,10 @@ const registerValidation = [
         .notEmpty()
         .withMessage('Password is required')
         .isLength({ min: 6 })
-        .withMessage('Password must be at least 6 characters long')
+        .withMessage('Password must be at least 6 characters long'),
+    body('professionalField')
+        .notEmpty()
+        .withMessage('Professional field is required for Authors')
 ];
 
 // Validation rules for admin user creation
@@ -54,7 +57,12 @@ const createUserValidation = [
         .notEmpty()
         .withMessage('Role is required')
         .isIn(['Editor', 'Reviewer', 'Sub Editor'])
-        .withMessage('Invalid role. Allowed roles: Editor, Reviewer, Sub Editor')
+        .withMessage('Invalid role. Allowed roles: Editor, Reviewer, Sub Editor'),
+    // professionalField required for Reviewer & Sub Editor; must be absent for Editor
+    body('professionalField')
+        .if(body('role').isIn(['Reviewer', 'Sub Editor']))
+        .notEmpty()
+        .withMessage('Professional field is required for Reviewer and Sub Editor')
 ];
 
 const loginValidation = [

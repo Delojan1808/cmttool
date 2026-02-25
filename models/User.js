@@ -34,6 +34,29 @@ const userSchema = new mongoose.Schema(
                 values: ['Secretary', 'Author', 'Reviewer', 'Editor', 'Sub Editor'],
                 message: '{VALUE} is not a valid role'
             }
+        },
+
+        // Professional field — required for Author, Reviewer, Sub Editor
+        // NOT applicable to Editor or Secretary
+        // The required/forbidden-per-role rules are enforced in the controller.
+        professionalField: {
+            type: String,
+            enum: {
+                values: [
+                    'Computer Science',
+                    'Engineering',
+                    'Mathematics',
+                    'Physics',
+                    'Chemistry',
+                    'Biology',
+                    'Medicine',
+                    'Psychology',
+                    'Social Sciences',
+                    'Humanities',
+                    'Other'
+                ],
+                message: '{VALUE} is not a valid professional field'
+            }
         }
     },
     {

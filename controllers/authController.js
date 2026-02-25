@@ -23,7 +23,7 @@ const register = async (req, res) => {
             });
         }
 
-        const { name, email, password } = req.body;
+        const { name, email, password, professionalField } = req.body;
 
         // Check if user already exists
         const userExists = await User.findOne({ email });
@@ -39,7 +39,8 @@ const register = async (req, res) => {
             name,
             email,
             password,
-            role: 'Author' // Always Author for public registration
+            role: 'Author', // Always Author for public registration
+            professionalField
         });
 
         // Generate token
@@ -54,6 +55,7 @@ const register = async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    professionalField: user.professionalField,
                     createdAt: user.createdAt
                 },
                 token
@@ -115,6 +117,7 @@ const login = async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    professionalField: user.professionalField,
                     createdAt: user.createdAt
                 },
                 token
@@ -153,6 +156,7 @@ const getProfile = async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    professionalField: user.professionalField,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt
                 }
@@ -182,7 +186,7 @@ const createUser = async (req, res) => {
             });
         }
 
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, professionalField } = req.body;
 
         // Only allow Secretary to create Editor, Reviewer, and Sub Editor
         const allowedRoles = ['Editor', 'Reviewer', 'Sub Editor'];
@@ -190,6 +194,21 @@ const createUser = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'Admins can only create Editor, Reviewer, or Sub Editor accounts'
+            });
+        }
+
+        // professionalField is required for Reviewer / Sub Editor but NOT for Editor
+        const rolesRequiringField = ['Reviewer', 'Sub Editor'];
+        if (rolesRequiringField.includes(role) && !professionalField) {
+            return res.status(400).json({
+                success: false,
+                message: 'Professional field is required for Reviewer and Sub Editor accounts'
+            });
+        }
+        if (role === 'Editor' && professionalField) {
+            return res.status(400).json({
+                success: false,
+                message: 'Editor accounts do not have a professional field'
             });
         }
 
@@ -207,7 +226,8 @@ const createUser = async (req, res) => {
             name,
             email,
             password,
-            role
+            role,
+            ...(professionalField && { professionalField })
         });
 
         res.status(201).json({
@@ -219,6 +239,7 @@ const createUser = async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    professionalField: user.professionalField,
                     createdAt: user.createdAt
                 }
             }

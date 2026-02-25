@@ -4,6 +4,7 @@ const cors = require('cors');
 const connectDB = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
 const paperRoutes = require('./routes/paperRoutes');
+const fieldRoutes = require('./routes/fieldRoutes'); // New field routes
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/papers', paperRoutes);
+app.use('/api/fields', fieldRoutes); // Mount fields API
 
 // Health check route
 app.get('/api/health', (req, res) => {

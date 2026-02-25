@@ -1,4 +1,5 @@
 const Paper = require('../models/Paper');
+const User = require('../models/User');
 const fs = require('fs');
 const path = require('path');
 
@@ -354,6 +355,142 @@ const downloadPaper = async (req, res) => {
     }
 };
 
+// @desc    Get all users with Reviewer role
+// @route   GET /api/papers/reviewers
+// @access  Private (Secretary)
+const getReviewers = async (req, res) => {
+    try {
+        const reviewers = await User.find({ role: 'Reviewer' }).select('name email professionalField');
+
+        res.status(200).json({
+            success: true,
+            count: reviewers.length,
+            data: { reviewers }
+        });
+    } catch (error) {
+        console.error('Get reviewers error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching reviewers',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Assign a reviewer to a paper
+// @route   PUT /api/papers/:id/assign-reviewer
+// @access  Private (Secretary)
+const assignReviewer = async (req, res) => {
+    try {
+        // Only Secretary can assign reviewers
+        if (req.user.role !== 'Secretary') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only Secretaries can assign reviewers'
+            });
+        }
+
+        const { reviewerId } = req.body;
+        if (!reviewerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'reviewerId is required'
+            });
+        }
+
+        // Validate that the reviewer exists and has the Reviewer role
+        const reviewer = await User.findById(reviewerId).select('name email role');
+        if (!reviewer || reviewer.role !== 'Reviewer') {
+            return res.status(404).json({
+                success: false,
+                message: 'Reviewer not found or user does not have the Reviewer role'
+            });
+        }
+
+        const paper = await Paper.findById(req.params.id);
+        if (!paper) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paper not found'
+            });
+        }
+
+        paper.reviewer = reviewerId;
+        paper.status = 'under_review';
+        await paper.save();
+
+        // Return populated paper
+        const updatedPaper = await Paper.findById(paper._id)
+            .populate('author', 'name email')
+            .populate('reviewer', 'name email')
+            .select('-filePath');
+
+        res.status(200).json({
+            success: true,
+            message: `Reviewer "${reviewer.name}" assigned to paper successfully`,
+            data: { paper: updatedPaper }
+        });
+    } catch (error) {
+        console.error('Assign reviewer error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while assigning reviewer',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Unassign a reviewer from a paper
+// @route   DELETE /api/papers/:id/assign-reviewer
+// @access  Private (Secretary)
+const unassignReviewer = async (req, res) => {
+    try {
+        // Only Secretary can unassign reviewers
+        if (req.user.role !== 'Secretary') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only Secretaries can unassign reviewers'
+            });
+        }
+
+        const paper = await Paper.findById(req.params.id);
+        if (!paper) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paper not found'
+            });
+        }
+
+        if (!paper.reviewer) {
+            return res.status(400).json({
+                success: false,
+                message: 'This paper does not have a reviewer assigned'
+            });
+        }
+
+        paper.reviewer = undefined;
+        paper.status = 'submitted';
+        await paper.save();
+
+        const updatedPaper = await Paper.findById(paper._id)
+            .populate('author', 'name email')
+            .select('-filePath');
+
+        res.status(200).json({
+            success: true,
+            message: 'Reviewer unassigned from paper successfully',
+            data: { paper: updatedPaper }
+        });
+    } catch (error) {
+        console.error('Unassign reviewer error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while unassigning reviewer',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     uploadPaper,
     getMyPapers,
@@ -361,5 +498,8 @@ module.exports = {
     getPaperById,
     updatePaper,
     deletePaper,
-    downloadPaper
+    downloadPaper,
+    getReviewers,
+    assignReviewer,
+    unassignReviewer
 };
