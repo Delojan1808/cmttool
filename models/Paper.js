@@ -91,7 +91,7 @@ const paperSchema = new mongoose.Schema(
         // Status and Workflow
         status: {
             type: String,
-            enum: ['draft', 'submitted', 'under_review', 'accepted', 'rejected', 'revision_required'],
+            enum: ['draft', 'submitted', 'under_review', 'reviewed', 'accepted', 'rejected', 'revision_required'],
             default: 'submitted'
         },
 

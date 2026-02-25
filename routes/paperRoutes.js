@@ -7,6 +7,7 @@ const requireRole = require('../middleware/roleMiddleware');
 const {
     uploadPaper,
     getMyPapers,
+    getAssignedPapers,
     getAllPapers,
     getPaperById,
     updatePaper,
@@ -60,6 +61,14 @@ router.post(
 
 // Get current user's papers (All authenticated users)
 router.get('/my-papers', authMiddleware, getMyPapers);
+
+// Get papers assigned to the current reviewer (Reviewer only)
+router.get(
+    '/assigned',
+    authMiddleware,
+    requireRole('Reviewer'),
+    getAssignedPapers
+);
 
 // Get all users with Reviewer role (Editor, Sub Editor only)
 // NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID

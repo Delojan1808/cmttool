@@ -125,6 +125,40 @@ const getMyPapers = async (req, res) => {
     }
 };
 
+// @desc    Get papers assigned to the current reviewer
+// @route   GET /api/papers/assigned
+// @access  Private (Reviewer)
+const getAssignedPapers = async (req, res) => {
+    try {
+        if (req.user.role !== 'Reviewer') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only Reviewers can fetch assigned papers'
+            });
+        }
+
+        const papers = await Paper.find({ reviewer: req.user._id })
+            .populate('author', 'name email')
+            .sort({ createdAt: -1 })
+            .select('-filePath'); // Don't expose file path in list
+
+        res.status(200).json({
+            success: true,
+            count: papers.length,
+            data: {
+                papers
+            }
+        });
+    } catch (error) {
+        console.error('Get assigned papers error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching assigned papers',
+            error: error.message
+        });
+    }
+};
+
 // @desc    Get all papers (Editor/Secretary only)
 // @route   GET /api/papers
 // @access  Private (Editor, Sub Editor, Secretary)
@@ -545,6 +579,7 @@ const unassignReviewer = async (req, res) => {
 module.exports = {
     uploadPaper,
     getMyPapers,
+    getAssignedPapers,
     getAllPapers,
     getPaperById,
     updatePaper,
