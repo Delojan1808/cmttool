@@ -9,7 +9,8 @@ const {
     getFields,
     createField,
     updateField,
-    deleteField
+    deleteField,
+    assignSubEditor
 } = require('../controllers/fieldController');
 
 const fieldValidation = [
@@ -46,6 +47,14 @@ router.delete(
     authMiddleware,
     requireRole('Secretary'),
     deleteField
+);
+
+// Editor route to assign a sub-editor to a field
+router.put(
+    '/:id/subeditor',
+    authMiddleware,
+    requireRole('Editor'),
+    assignSubEditor
 );
 
 module.exports = router;

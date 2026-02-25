@@ -5,7 +5,8 @@ const {
     register,
     login,
     getProfile,
-    createUser
+    createUser,
+    getSubEditors
 } = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/roleMiddleware');
@@ -85,7 +86,20 @@ router.post('/login', loginValidation, login);
 router.get('/profile', authMiddleware, getProfile);
 
 // Admin routes (Secretary only)
-router.post('/admin/create-user', authMiddleware, requireRole('Secretary'), createUserValidation, createUser);
+router.post(
+    '/admin/create-user',
+    authMiddleware,
+    requireRole('Secretary'),
+    createUserValidation,
+    createUser
+);
+
+// Route for Editor to fetch Sub-Editors
+router.get(
+    '/sub-editors',
+    authMiddleware,
+    requireRole('Editor'),
+    getSubEditors
+);
 
 module.exports = router;
-

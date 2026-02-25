@@ -6,7 +6,9 @@ const { validationResult } = require('express-validator');
 // @access  Public (so users can select them during registration)
 const getFields = async (req, res) => {
     try {
-        const fields = await ProfessionalField.find({}).sort('name');
+        const fields = await ProfessionalField.find({})
+            .populate('subEditor', 'name email')
+            .sort('name');
         res.status(200).json({
             success: true,
             count: fields.length,
@@ -138,9 +140,47 @@ const deleteField = async (req, res) => {
     }
 };
 
+// @desc    Assign a Sub-Editor to a professional field
+// @route   PUT /api/fields/:id/subeditor
+// @access  Private (Editor only)
+const assignSubEditor = async (req, res) => {
+    try {
+        const { subEditorId } = req.body;
+
+        let field = await ProfessionalField.findById(req.params.id);
+        if (!field) {
+            return res.status(404).json({
+                success: false,
+                message: 'Field not found'
+            });
+        }
+
+        // Allow null assignment (unassign) or a valid ID
+        field.subEditor = subEditorId || null;
+        await field.save();
+
+        // Populate so caller gets updated details
+        field = await ProfessionalField.findById(field._id).populate('subEditor', 'name email');
+
+        res.status(200).json({
+            success: true,
+            message: 'Sub-Editor assigned successfully',
+            data: { field }
+        });
+    } catch (error) {
+        console.error('Assign sub-editor error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while assigning sub-editor',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getFields,
     createField,
     updateField,
-    deleteField
+    deleteField,
+    assignSubEditor
 };

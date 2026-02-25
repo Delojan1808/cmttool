@@ -254,9 +254,30 @@ const createUser = async (req, res) => {
     }
 };
 
+// @desc    Get all Sub-Editors
+// @route   GET /api/auth/sub-editors
+// @access  Private (Editor)
+const getSubEditors = async (req, res) => {
+    try {
+        const subEditors = await User.find({ role: 'Sub Editor' }).select('name email');
+        res.status(200).json({
+            success: true,
+            data: { subEditors }
+        });
+    } catch (error) {
+        console.error('Get sub-editors error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching sub-editors',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     getProfile,
-    createUser
+    createUser,
+    getSubEditors
 };

@@ -8,6 +8,11 @@ const professionalFieldSchema = new mongoose.Schema(
             unique: true,
             trim: true,
             maxlength: [100, 'Field name cannot exceed 100 characters']
+        },
+        subEditor: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
         }
     },
     {
