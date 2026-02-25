@@ -1,13 +1,5 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
-
-// Generate JWT Token
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRE || '7d'
-    });
-};
 
 // @desc    Register a new user (Author only - public registration)
 // @route   POST /api/auth/register
@@ -43,23 +35,25 @@ const register = async (req, res) => {
             professionalField
         });
 
-        // Generate token
-        const token = generateToken(user._id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Author account registered successfully',
-            data: {
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
-                    createdAt: user.createdAt
-                },
-                token
+        // Log the user in after registration
+        req.login(user, (err) => {
+            if (err) {
+                return res.status(500).json({ success: false, message: 'Server error during login' });
             }
+            return res.status(201).json({
+                success: true,
+                message: 'Author account registered successfully',
+                data: {
+                    user: {
+                        id: user._id,
+                        name: user.name,
+                        email: user.email,
+                        role: user.role,
+                        professionalField: user.professionalField,
+                        createdAt: user.createdAt
+                    }
+                }
+            });
         });
     } catch (error) {
         console.error('Register error:', error);
@@ -74,63 +68,35 @@ const register = async (req, res) => {
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-const login = async (req, res) => {
-    try {
-        // Check for validation errors
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
-        }
-
-        const { email, password } = req.body;
-
-        // Check if user exists (include password field for comparison)
-        const user = await User.findOne({ email }).select('+password');
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
-
-        // Check password
-        const isPasswordMatch = await user.comparePassword(password);
-        if (!isPasswordMatch) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
-
-        // Generate token
-        const token = generateToken(user._id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Login successful',
-            data: {
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
-                    createdAt: user.createdAt
-                },
-                token
+const login = (req, res) => {
+    // passport.authenticate('local') handles the validation and sets req.user
+    res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        data: {
+            user: {
+                id: req.user._id,
+                name: req.user.name,
+                email: req.user.email,
+                role: req.user.role,
+                professionalField: req.user.professionalField,
+                createdAt: req.user.createdAt
             }
+        }
+    });
+};
+
+// @desc    Logout user
+// @route   POST /api/auth/logout
+// @access  Public
+const logout = (req, res) => {
+    req.logout((err) => {
+        if (err) { return res.status(500).json({ success: false, message: 'Error logging out' }); }
+        req.session.destroy((err) => {
+            res.clearCookie('connect.sid');
+            res.status(200).json({ success: true, message: 'Logged out successfully' });
         });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during login',
-            error: error.message
-        });
-    }
+    });
 };
 
 // @desc    Get current user profile
@@ -277,6 +243,7 @@ const getSubEditors = async (req, res) => {
 module.exports = {
     register,
     login,
+    logout,
     getProfile,
     createUser,
     getSubEditors

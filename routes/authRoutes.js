@@ -4,12 +4,14 @@ const { body } = require('express-validator');
 const {
     register,
     login,
+    logout,
     getProfile,
     createUser,
     getSubEditors
 } = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/roleMiddleware');
+const passport = require('passport');
 
 // Validation rules for public registration (Author only - no role field)
 const registerValidation = [
@@ -80,7 +82,8 @@ const loginValidation = [
 
 // Public routes
 router.post('/register', registerValidation, register);
-router.post('/login', loginValidation, login);
+router.post('/login', loginValidation, passport.authenticate('local'), login);
+router.post('/logout', logout);
 
 // Protected routes
 router.get('/profile', authMiddleware, getProfile);

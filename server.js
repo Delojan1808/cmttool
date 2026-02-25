@@ -6,6 +6,11 @@ const authRoutes = require('./routes/authRoutes');
 const paperRoutes = require('./routes/paperRoutes');
 const fieldRoutes = require('./routes/fieldRoutes'); // New field routes
 const reviewRoutes = require('./routes/reviewRoutes');
+const session = require('express-session');
+const passport = require('passport');
+
+// Passport Config
+require('./config/passport')(passport);
 
 const app = express();
 
@@ -13,9 +18,25 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:5173', // Vite default port
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Express session
+app.use(
+    session({
+        secret: process.env.JWT_SECRET || 'secret', // Reusing JWT secret for ease, or use a new env var
+        resave: false,
+        saveUninitialized: false,
+    })
+);
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Routes
 app.use('/api/auth', authRoutes);
