@@ -6,6 +6,12 @@ const authRoutes = require('./routes/authRoutes');
 const paperRoutes = require('./routes/paperRoutes');
 const fieldRoutes = require('./routes/fieldRoutes'); // New field routes
 const reviewRoutes = require('./routes/reviewRoutes');
+const conferenceRoutes = require('./routes/conferenceRoutes');
+const session = require('express-session');
+const passport = require('passport');
+
+// Passport Config
+require('./config/passport')(passport);
 
 const app = express();
 
@@ -22,6 +28,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/papers', paperRoutes);
 app.use('/api/fields', fieldRoutes); // Mount fields API
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/conferences', conferenceRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
