@@ -30,10 +30,7 @@ const registerValidation = [
         .notEmpty()
         .withMessage('Password is required')
         .isLength({ min: 6 })
-        .withMessage('Password must be at least 6 characters long'),
-    body('professionalField')
-        .notEmpty()
-        .withMessage('Professional field is required for Authors')
+        .withMessage('Password must be at least 6 characters long')
 ];
 
 // Validation rules for admin user creation

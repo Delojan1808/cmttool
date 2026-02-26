@@ -40,23 +40,8 @@ const userSchema = new mongoose.Schema(
         // NOT applicable to Editor or Secretary
         // The required/forbidden-per-role rules are enforced in the controller.
         professionalField: {
-            type: String,
-            enum: {
-                values: [
-                    'Computer Science',
-                    'Engineering',
-                    'Mathematics',
-                    'Physics',
-                    'Chemistry',
-                    'Biology',
-                    'Medicine',
-                    'Psychology',
-                    'Social Sciences',
-                    'Humanities',
-                    'Other'
-                ],
-                message: '{VALUE} is not a valid professional field'
-            }
+            type: String
+            // Removed enum constraint to allow dynamic values from the ProfessionalField collection
         }
     },
     {

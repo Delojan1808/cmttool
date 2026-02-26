@@ -524,14 +524,14 @@ const getReviewers = async (req, res) => {
 
 // @desc    Assign a reviewer to a paper
 // @route   PUT /api/papers/:id/assign-reviewer
-// @access  Private (Secretary)
+// @access  Private (Secretary, Editor)
 const assignReviewer = async (req, res) => {
     try {
-        // Only Secretary can assign reviewers
-        if (req.user.role !== 'Secretary') {
+        // Only Secretary and Editor can assign reviewers
+        if (!['Secretary', 'Editor'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only the Secretary can assign reviewers'
+                message: 'Only the Secretary or Editor can assign reviewers'
             });
         }
 
@@ -609,14 +609,14 @@ const assignReviewer = async (req, res) => {
 
 // @desc    Unassign a reviewer from a paper
 // @route   DELETE /api/papers/:id/assign-reviewer
-// @access  Private (Secretary)
+// @access  Private (Secretary, Editor)
 const unassignReviewer = async (req, res) => {
     try {
-        // Only Secretary can unassign reviewers
-        if (req.user.role !== 'Secretary') {
+        // Only Secretary and Editor can unassign reviewers
+        if (!['Secretary', 'Editor'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only the Secretary can unassign reviewers'
+                message: 'Only the Secretary or Editor can unassign reviewers'
             });
         }
 
