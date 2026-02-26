@@ -4,6 +4,7 @@ const { body } = require('express-validator');
 const {
     register,
     login,
+    logout,
     getProfile,
     createUser,
     getSubEditors
@@ -83,6 +84,7 @@ router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
 
 // Protected routes
+router.post('/logout', authMiddleware, logout);
 router.get('/profile', authMiddleware, getProfile);
 
 // Admin routes (Secretary only)

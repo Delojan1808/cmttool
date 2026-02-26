@@ -1,5 +1,7 @@
 const Review = require('../models/Review');
 const Paper = require('../models/Paper');
+const ProfessionalField = require('../models/ProfessionalField');
+const { sendEmail } = require('../utils/emailService');
 
 // @desc    Submit a new review
 // @route   POST /api/reviews/:paperId
@@ -9,7 +11,7 @@ const createReview = async (req, res) => {
         const paperId = req.params.paperId;
 
         // Check if paper exists
-        const paper = await Paper.findById(paperId);
+        const paper = await Paper.findById(paperId).populate('author', 'name email');
         if (!paper) {
             return res.status(404).json({
                 success: false,
@@ -17,11 +19,11 @@ const createReview = async (req, res) => {
             });
         }
 
-        // Verify the user is the assigned reviewer
-        if (paper.reviewer?.toString() !== req.user._id.toString()) {
+        // Verify the user is an assigned reviewer
+        if (!paper.assignedReviewers || !paper.assignedReviewers.includes(req.user._id)) {
             return res.status(403).json({
                 success: false,
-                message: 'You are not the assigned reviewer for this paper'
+                message: 'You are not assigned to review this paper'
             });
         }
 
@@ -47,9 +49,42 @@ const createReview = async (req, res) => {
 
         const review = await Review.create(reviewData);
 
-        // Update paper status to reviewed
-        paper.status = 'reviewed';
-        await paper.save();
+        // Update paper status to reviewed (if not already)
+        // If there are multiple reviewers, we might want to check if ALL reviewers submitted
+        // before marking it as 'reviewed', but for now we will just use 'reviewed' as a signal.
+        if (paper.status === 'under_review') {
+            paper.status = 'reviewed';
+            await paper.save();
+        }
+
+        // Notify Sub-Editor asynchronously
+        try {
+            const field = await ProfessionalField.findOne({ name: paper.category }).populate('subEditor', 'name email');
+            if (field && field.subEditor) {
+                sendEmail({
+                    to: field.subEditor.email,
+                    subject: `New Review Submitted: ${paper.title}`,
+                    text: `Hello ${field.subEditor.name},\n\nA reviewer has just submitted their evaluation for the paper titled "${paper.title}".\n\nPlease log in to the dashboard to review the recommendation and make a final decision.\n\nThank you,\nCMT System`,
+                    html: `<p>Hello ${field.subEditor.name},</p><p>A reviewer has just submitted their evaluation for the paper titled <strong>"${paper.title}"</strong>.</p><p>Please log in to the dashboard to review the recommendation and make a final decision.</p><p>Thank you,<br/>CMT System</p>`
+                });
+            }
+        } catch (mailErr) {
+            console.error('Error sending review notification:', mailErr);
+        }
+
+        // Notify Author asynchronously
+        try {
+            if (paper.author && paper.author.email) {
+                sendEmail({
+                    to: paper.author.email,
+                    subject: `Review Completed: ${paper.title}`,
+                    text: `Hello ${paper.author.name},\n\nA review has just been completed for your paper titled "${paper.title}".\n\nThe Editor will review the evaluation and provide a final decision soon.\n\nThank you,\nCMT System`,
+                    html: `<p>Hello ${paper.author.name},</p><p>A review has just been completed for your paper titled <strong>"${paper.title}"</strong>.</p><p>The Editor will review the evaluation and provide a final decision soon.</p><p>Thank you,<br/>CMT System</p>`
+                });
+            }
+        } catch (mailErr) {
+            console.error('Error sending author review notification:', mailErr);
+        }
 
         res.status(201).json({
             success: true,
@@ -81,10 +116,14 @@ const getReviewsForPaper = async (req, res) => {
             });
         }
 
+        const isAssignedReviewer = paper.assignedReviewers && paper.assignedReviewers.some(
+            reviewer => reviewer.toString() === req.user._id.toString()
+        );
+
         // Simple access check
         const canView =
             paper.author.toString() === req.user._id.toString() ||
-            (paper.reviewer && paper.reviewer.toString() === req.user._id.toString()) ||
+            isAssignedReviewer ||
             ['Editor', 'Sub Editor', 'Secretary'].includes(req.user.role);
 
         if (!canView) {

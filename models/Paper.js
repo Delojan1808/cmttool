@@ -25,22 +25,13 @@ const paperSchema = new mongoose.Schema(
         },
         category: {
             type: String,
-            required: [true, 'Category is required'],
-            enum: {
-                values: [
-                    'Computer Science',
-                    'Engineering',
-                    'Mathematics',
-                    'Physics',
-                    'Chemistry',
-                    'Biology',
-                    'Medicine',
-                    'Social Sciences',
-                    'Humanities',
-                    'Other'
-                ],
-                message: '{VALUE} is not a valid category'
-            }
+            required: [true, 'Professional field (category) is required']
+        },
+
+        conference: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Conference',
+            required: [true, 'A paper must belong to a conference']
         },
 
         // Author Information
@@ -96,10 +87,12 @@ const paperSchema = new mongoose.Schema(
         },
 
         // Review Information
-        reviewer: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
-        },
+        assignedReviewers: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            }
+        ],
         reviewComments: {
             type: String,
             maxlength: [5000, 'Review comments cannot exceed 5000 characters']

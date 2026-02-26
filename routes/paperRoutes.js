@@ -15,7 +15,9 @@ const {
     downloadPaper,
     getReviewers,
     assignReviewer,
-    unassignReviewer
+    unassignReviewer,
+    declineReview,
+    updatePaperStatus
 } = require('../controllers/paperController');
 
 // Validation for paper metadata
@@ -70,12 +72,12 @@ router.get(
     getAssignedPapers
 );
 
-// Get all users with Reviewer role (Editor, Sub Editor only)
+// Get all users with Reviewer role (Secretary only)
 // NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID
 router.get(
     '/reviewers',
     authMiddleware,
-    requireRole('Editor', 'Sub Editor'),
+    requireRole('Secretary'),
     getReviewers
 );
 
@@ -91,24 +93,41 @@ router.get(
 router.get('/:id', authMiddleware, getPaperById);
 
 // Update paper metadata (Author only - permission checked in controller)
-router.put('/:id', authMiddleware, updatePaper);
+// Added upload middleware to support optional re-upload of revisions/camera-ready PDFs
+router.put('/:id', authMiddleware, upload.single('pdf'), updatePaper);
 
-// Assign a reviewer to a paper (Editor, Sub Editor only)
+// Decline a review assignment (Reviewer only)
+router.put(
+    '/:id/decline-review',
+    authMiddleware,
+    requireRole('Reviewer'),
+    declineReview
+);
+
+// Assign a reviewer to a paper (Secretary only)
 router.put(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Editor', 'Sub Editor'),
+    requireRole('Secretary'),
     assignReviewer
+);
+
+// Update paper status (Editor, Sub Editor only)
+router.put(
+    '/:id/status',
+    authMiddleware,
+    requireRole('Editor', 'Sub Editor'),
+    updatePaperStatus
 );
 
 // Delete paper (Author or Secretary - permission checked in controller)
 router.delete('/:id', authMiddleware, deletePaper);
 
-// Unassign reviewer from a paper (Editor, Sub Editor only)
+// Unassign reviewer from a paper (Secretary only)
 router.delete(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Editor', 'Sub Editor'),
+    requireRole('Secretary'),
     unassignReviewer
 );
 

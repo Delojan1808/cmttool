@@ -1,16 +1,16 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const session = require('express-session');
+const passport = require('passport');
 const connectDB = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
 const paperRoutes = require('./routes/paperRoutes');
-const fieldRoutes = require('./routes/fieldRoutes'); // New field routes
+const fieldRoutes = require('./routes/fieldRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const conferenceRoutes = require('./routes/conferenceRoutes');
-const session = require('express-session');
-const passport = require('passport');
 
-// Passport Config
+// Passport config
 require('./config/passport')(passport);
 
 const app = express();
@@ -19,9 +19,28 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:5173', // Enable CORS for frontend requests
+    credentials: true // Allow cookies to be sent
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Express session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    }
+}));
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Routes
 app.use('/api/auth', authRoutes);

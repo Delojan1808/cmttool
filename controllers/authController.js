@@ -1,13 +1,7 @@
-const jwt = require('jsonwebtoken');
+const passport = require('passport');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
-
-// Generate JWT Token
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRE || '7d'
-    });
-};
+const { sendEmail } = require('../utils/emailService');
 
 // @desc    Register a new user (Author only - public registration)
 // @route   POST /api/auth/register
@@ -43,23 +37,33 @@ const register = async (req, res) => {
             professionalField
         });
 
-        // Generate token
-        const token = generateToken(user._id);
+        // Send Welcome Email asynchronously
+        sendEmail({
+            to: user.email,
+            subject: 'Welcome to CMT System',
+            text: `Hello ${user.name},\n\nYour Author account has been successfully created.\n\nYou can now log in and submit papers to active conferences.\n\nThank you,\nCMT System`,
+            html: `<p>Hello ${user.name},</p><p>Your Author account has been successfully created.</p><p>You can now log in and submit papers to active conferences.</p><p>Thank you,<br/>CMT System</p>`
+        });
 
-        res.status(201).json({
-            success: true,
-            message: 'Author account registered successfully',
-            data: {
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
-                    createdAt: user.createdAt
-                },
-                token
+        // Automatically log in the user after registration
+        req.login(user, (err) => {
+            if (err) {
+                return next(err);
             }
+            return res.status(201).json({
+                success: true,
+                message: 'Author account registered successfully',
+                data: {
+                    user: {
+                        id: user._id,
+                        name: user.name,
+                        email: user.email,
+                        role: user.role,
+                        professionalField: user.professionalField,
+                        createdAt: user.createdAt
+                    }
+                }
+            });
         });
     } catch (error) {
         console.error('Register error:', error);
@@ -74,63 +78,75 @@ const register = async (req, res) => {
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-const login = async (req, res) => {
-    try {
-        // Check for validation errors
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
+const login = (req, res, next) => {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            success: false,
+            errors: errors.array()
+        });
+    }
+
+    passport.authenticate('local', (err, user, info) => {
+        if (err) {
+            return res.status(500).json({
                 success: false,
-                errors: errors.array()
+                message: 'Server error during login',
+                error: err.message
             });
         }
-
-        const { email, password } = req.body;
-
-        // Check if user exists (include password field for comparison)
-        const user = await User.findOne({ email }).select('+password');
         if (!user) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid credentials'
+                message: info.message || 'Invalid credentials'
             });
         }
-
-        // Check password
-        const isPasswordMatch = await user.comparePassword(password);
-        if (!isPasswordMatch) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
-
-        // Generate token
-        const token = generateToken(user._id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Login successful',
-            data: {
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
-                    createdAt: user.createdAt
-                },
-                token
+        req.logIn(user, (err) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Server error during session creation',
+                    error: err.message
+                });
             }
+            return res.status(200).json({
+                success: true,
+                message: 'Login successful',
+                data: {
+                    user: {
+                        id: user._id,
+                        name: user.name,
+                        email: user.email,
+                        role: user.role,
+                        professionalField: user.professionalField,
+                        createdAt: user.createdAt
+                    }
+                }
+            });
         });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during login',
-            error: error.message
+    })(req, res, next);
+};
+
+// @desc    Logout user
+// @route   POST /api/auth/logout
+// @access  Private
+const logout = (req, res, next) => {
+    req.logout((err) => {
+        if (err) {
+            return next(err);
+        }
+        req.session.destroy((err) => {
+            if (err) {
+                return next(err);
+            }
+            res.clearCookie('connect.sid'); // Clear the session cookie
+            return res.status(200).json({
+                success: true,
+                message: 'Logged out successfully'
+            });
         });
-    }
+    });
 };
 
 // @desc    Get current user profile
@@ -138,8 +154,8 @@ const login = async (req, res) => {
 // @access  Private
 const getProfile = async (req, res) => {
     try {
-        // req.user is set by authMiddleware
-        const user = await User.findById(req.user._id);
+        // req.user is populated by passport via session
+        const user = req.user;
 
         if (!user) {
             return res.status(404).json({
@@ -230,6 +246,14 @@ const createUser = async (req, res) => {
             ...(professionalField && { professionalField })
         });
 
+        // Send Notification Email asynchronously
+        sendEmail({
+            to: user.email,
+            subject: `Welcome to CMT System - You have been assigned as a ${role}`,
+            text: `Hello ${user.name},\n\nAn administrator has created an account for you as a ${role}.\n\nYour temporary password is: ${password}\n\nPlease log in to access your dashboard.\n\nThank you,\nCMT System`,
+            html: `<p>Hello ${user.name},</p><p>An administrator has created an account for you as a <strong>${role}</strong>.</p><p>Your temporary password is: <strong>${password}</strong></p><p>Please log in to access your dashboard.</p><p>Thank you,<br/>CMT System</p>`
+        });
+
         res.status(201).json({
             success: true,
             message: `${role} account created successfully`,
@@ -277,6 +301,7 @@ const getSubEditors = async (req, res) => {
 module.exports = {
     register,
     login,
+    logout,
     getProfile,
     createUser,
     getSubEditors
