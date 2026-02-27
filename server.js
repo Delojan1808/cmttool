@@ -21,7 +21,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-    origin: 'http://localhost:5173', // Enable CORS for frontend requests
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:4173'], // Enable CORS for Vite frontend dev servers and preview
     credentials: true // Allow cookies to be sent
 }));
 app.use(express.json());

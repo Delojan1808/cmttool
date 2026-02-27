@@ -72,12 +72,12 @@ router.get(
     getAssignedPapers
 );
 
-// Get all users with Reviewer role (Secretary and Editor)
+// Get all users with Reviewer role (Secretary, Editor, Sub Editor)
 // NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID
 router.get(
     '/reviewers',
     authMiddleware,
-    requireRole('Secretary', 'Editor'),
+    requireRole('Secretary', 'Editor', 'Sub Editor'),
     getReviewers
 );
 
