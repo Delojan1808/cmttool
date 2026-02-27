@@ -24,7 +24,8 @@ const paperSchema = new mongoose.Schema(
             }
         },
         category: {
-            type: String,
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'ProfessionalField',
             required: [true, 'Professional field (category) is required']
         },
 
@@ -93,6 +94,9 @@ const paperSchema = new mongoose.Schema(
                 ref: 'User'
             }
         ],
+        reviewDeadline: {
+            type: Date
+        },
         reviewComments: {
             type: String,
             maxlength: [5000, 'Review comments cannot exceed 5000 characters']

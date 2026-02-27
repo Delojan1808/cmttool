@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/roleMiddleware');
-const { createConference, getAllConferences, updateConference, deleteConference } = require('../controllers/conferenceController');
+const { createConference, getAllConferences, updateConference, deleteConference, addSession, assignPaperToSession } = require('../controllers/conferenceController');
 
 // Create Conference (Secretary only)
 router.post(
@@ -33,6 +33,22 @@ router.delete(
     authMiddleware,
     requireRole('Secretary'),
     deleteConference
+);
+
+// Add a session to a conference (Secretary only)
+router.post(
+    '/:id/sessions',
+    authMiddleware,
+    requireRole('Secretary'),
+    addSession
+);
+
+// Assign a paper to a session (Secretary only)
+router.put(
+    '/:id/sessions/:sessionId/papers',
+    authMiddleware,
+    requireRole('Secretary'),
+    assignPaperToSession
 );
 
 module.exports = router;

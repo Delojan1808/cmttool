@@ -2,6 +2,7 @@ const Paper = require('../models/Paper');
 const User = require('../models/User');
 const Conference = require('../models/Conference');
 const ProfessionalField = require('../models/ProfessionalField');
+const Notification = require('../models/Notification');
 const fs = require('fs');
 const path = require('path');
 const { sendEmail } = require('../utils/emailService');
@@ -30,6 +31,20 @@ const uploadPaper = async (req, res) => {
                 success: false,
                 message: 'Title, abstract, category, and conference selection are required'
             });
+        }
+
+        // Resolve category name → ProfessionalField ObjectId
+        const mongoose = require('mongoose');
+        let categoryId;
+        if (mongoose.Types.ObjectId.isValid(category)) {
+            categoryId = category;
+        } else {
+            const fieldDoc = await ProfessionalField.findOne({ name: category });
+            if (!fieldDoc) {
+                fs.unlinkSync(req.file.path);
+                return res.status(400).json({ success: false, message: `Professional field "${category}" not found` });
+            }
+            categoryId = fieldDoc._id;
         }
 
         // Validate conference exists
@@ -75,7 +90,7 @@ const uploadPaper = async (req, res) => {
             title,
             abstract,
             keywords: parsedKeywords,
-            category,
+            category: categoryId,
             coAuthors: parsedCoAuthors,
             author: req.user._id,
             conference: conferenceId,
@@ -146,6 +161,7 @@ const uploadPaper = async (req, res) => {
 const getMyPapers = async (req, res) => {
     try {
         const papers = await Paper.find({ author: req.user._id })
+            .populate('category', 'name')
             .populate('conference', 'title conferenceDate submissionDeadline')
             .sort({ createdAt: -1 })
             .select('-filePath'); // Don't expose file path
@@ -181,6 +197,7 @@ const getAssignedPapers = async (req, res) => {
 
         const papers = await Paper.find({ assignedReviewers: req.user._id })
             .populate('author', 'name email')
+            .populate('category', 'name')
             .populate('conference', 'title')
             .sort({ createdAt: -1 })
             .select('-filePath'); // Don't expose file path in list
@@ -218,21 +235,25 @@ const getAllPapers = async (req, res) => {
         // Restrict Sub-Editors to only see papers that belong to their assigned Professional Fields
         if (req.user.role === 'Sub Editor') {
             const assignedFields = await ProfessionalField.find({ subEditor: req.user._id });
-            const allowedCategories = assignedFields.map(f => f.name);
+            const allowedCategoryIds = assignedFields.map(f => f._id);
 
             if (category) {
-                // If they requested a category they don't have access to, force empty query
-                if (!allowedCategories.includes(category)) {
+                // If they requested a category by name, resolve to ObjectId first
+                const reqFieldDoc = await ProfessionalField.findOne({ name: category });
+                if (!reqFieldDoc || !allowedCategoryIds.some(id => id.equals(reqFieldDoc._id))) {
                     filter.category = { $in: [] };
+                } else {
+                    filter.category = reqFieldDoc._id;
                 }
             } else {
                 // Show everything they have access to
-                filter.category = { $in: allowedCategories };
+                filter.category = { $in: allowedCategoryIds };
             }
         }
 
         const papers = await Paper.find(filter)
             .populate('author', 'name email')
+            .populate('category', 'name')
             .populate('assignedReviewers', 'name email')
             .populate('conference', 'title conferenceDate')
             .sort({ createdAt: -1 })
@@ -262,6 +283,7 @@ const getPaperById = async (req, res) => {
     try {
         const paper = await Paper.findById(req.params.id)
             .populate('author', 'name email')
+            .populate('category', 'name')
             .populate('assignedReviewers', 'name email')
             .populate('conference', 'title conferenceDate submissionDeadline');
 
@@ -327,6 +349,15 @@ const updatePaper = async (req, res) => {
             });
         }
 
+        // Check if paper status allows for updates
+        const updatableStatuses = ['submitted', 'revision_required', 'accepted'];
+        if (!updatableStatuses.includes(paper.status)) {
+            return res.status(403).json({
+                success: false,
+                message: `Paper cannot be edited while in '${paper.status}' status`
+            });
+        }
+
         // Only allow updating certain fields
         const { title, abstract, keywords, category, coAuthors } = req.body;
 
@@ -340,7 +371,16 @@ const updatePaper = async (req, res) => {
                 paper.keywords = keywords;
             }
         }
-        if (category) paper.category = category;
+        if (category) {
+            // Resolve category name → ObjectId if needed
+            const mongoose = require('mongoose');
+            if (mongoose.Types.ObjectId.isValid(category)) {
+                paper.category = category;
+            } else {
+                const fieldDoc = await ProfessionalField.findOne({ name: category });
+                if (fieldDoc) paper.category = fieldDoc._id;
+            }
+        }
         if (coAuthors) {
             try {
                 paper.coAuthors = typeof coAuthors === 'string'
@@ -527,15 +567,15 @@ const getReviewers = async (req, res) => {
 // @access  Private (Secretary, Editor)
 const assignReviewer = async (req, res) => {
     try {
-        // Only Secretary and Editor can assign reviewers
-        if (!['Secretary', 'Editor'].includes(req.user.role)) {
+        // Secretary, Editor, and Sub Editor can assign reviewers
+        if (!['Secretary', 'Editor', 'Sub Editor'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only the Secretary or Editor can assign reviewers'
+                message: 'You are not authorized to assign reviewers'
             });
         }
 
-        const { reviewerId } = req.body;
+        const { reviewerId, reviewDeadline } = req.body;
         if (!reviewerId) {
             return res.status(400).json({
                 success: false,
@@ -570,6 +610,9 @@ const assignReviewer = async (req, res) => {
 
         // Push reviewer back to array
         paper.assignedReviewers.push(reviewerId);
+
+        // Set review deadline (default to 14 days from now if not provided)
+        paper.reviewDeadline = reviewDeadline ? new Date(reviewDeadline) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
         // Update status to under review if this is the first reviewer assigned and status is 'submitted'
         if (paper.status === 'submitted') {
@@ -706,7 +749,7 @@ const updatePaperStatus = async (req, res) => {
 
         // Sub Editor can only update papers in their category
         if (req.user.role === 'Sub Editor') {
-            const field = await ProfessionalField.findOne({ name: paper.category, subEditor: req.user._id });
+            const field = await ProfessionalField.findOne({ _id: paper.category, subEditor: req.user._id });
             if (!field) {
                 return res.status(403).json({
                     success: false,
@@ -717,6 +760,14 @@ const updatePaperStatus = async (req, res) => {
 
         paper.status = status;
         await paper.save();
+
+        // Create in-app notification for the author
+        await Notification.create({
+            user: paper.author._id,
+            message: `The status of your paper "${paper.title}" has been updated to: ${status.replace('_', ' ').toUpperCase()}.`,
+            type: 'status_update',
+            relatedPaper: paper._id
+        });
 
         // Send email to Author asynchronously
         sendEmail({

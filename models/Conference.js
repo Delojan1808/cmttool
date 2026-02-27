@@ -9,7 +9,7 @@ const conferenceSchema = new mongoose.Schema(
             maxlength: [200, 'Title cannot exceed 200 characters']
         },
         professionalFields: {
-            type: [String],
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProfessionalField' }],
             required: [true, 'At least one professional field is required'],
             validate: {
                 validator: function (v) {
@@ -26,6 +26,22 @@ const conferenceSchema = new mongoose.Schema(
             type: Date,
             required: [true, 'Conference date is required']
         },
+        sessions: [
+            {
+                name: {
+                    type: String,
+                    required: true
+                },
+                startTime: Date,
+                endTime: Date,
+                papers: [
+                    {
+                        type: mongoose.Schema.Types.ObjectId,
+                        ref: 'Paper'
+                    }
+                ]
+            }
+        ],
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',

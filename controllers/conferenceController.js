@@ -1,4 +1,6 @@
 const Conference = require('../models/Conference');
+const ProfessionalField = require('../models/ProfessionalField');
+const mongoose = require('mongoose');
 
 // @desc    Create a new conference
 // @route   POST /api/conferences
@@ -15,17 +17,37 @@ exports.createConference = async (req, res) => {
             });
         }
 
+        // Resolve field names or IDs to ObjectIds
+        const fieldArray = Array.isArray(professionalFields) ? professionalFields : [professionalFields];
+        const fieldIds = [];
+        for (const f of fieldArray) {
+            if (mongoose.Types.ObjectId.isValid(f)) {
+                fieldIds.push(new mongoose.Types.ObjectId(f));
+            } else {
+                const fieldDoc = await ProfessionalField.findOne({ name: f });
+                if (!fieldDoc) {
+                    return res.status(400).json({ success: false, message: `Professional field "${f}" not found` });
+                }
+                fieldIds.push(fieldDoc._id);
+            }
+        }
+
         const conference = await Conference.create({
             title,
-            professionalFields,
+            professionalFields: fieldIds,
             submissionDeadline,
             conferenceDate,
             createdBy: req.user._id
         });
 
+        // Return with populated fields
+        const populated = await Conference.findById(conference._id)
+            .populate('professionalFields', 'name')
+            .populate('createdBy', 'name email');
+
         res.status(201).json({
             success: true,
-            data: conference
+            data: populated
         });
     } catch (error) {
         console.error('Error in createConference:', error);
@@ -43,6 +65,7 @@ exports.createConference = async (req, res) => {
 exports.getAllConferences = async (req, res) => {
     try {
         const conferences = await Conference.find()
+            .populate('professionalFields', 'name')
             .populate('createdBy', 'name email')
             .sort({ createdAt: -1 });
 
@@ -74,15 +97,30 @@ exports.updateConference = async (req, res) => {
             });
         }
 
-        // Optional: Check if the user updating is the one who created it
-        // if (conference.createdBy.toString() !== req.user._id.toString()) {
-        //     return res.status(403).json({ success: false, message: 'Not authorized to update this conference' });
-        // }
+        // If professionalFields is being updated, resolve names → ObjectIds
+        if (req.body.professionalFields) {
+            const fieldArray = Array.isArray(req.body.professionalFields)
+                ? req.body.professionalFields
+                : [req.body.professionalFields];
+            const fieldIds = [];
+            for (const f of fieldArray) {
+                if (mongoose.Types.ObjectId.isValid(f)) {
+                    fieldIds.push(new mongoose.Types.ObjectId(f));
+                } else {
+                    const fieldDoc = await ProfessionalField.findOne({ name: f });
+                    if (!fieldDoc) {
+                        return res.status(400).json({ success: false, message: `Professional field "${f}" not found` });
+                    }
+                    fieldIds.push(fieldDoc._id);
+                }
+            }
+            req.body.professionalFields = fieldIds;
+        }
 
         conference = await Conference.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
-        });
+        }).populate('professionalFields', 'name');
 
         res.status(200).json({
             success: true,
@@ -125,5 +163,63 @@ exports.deleteConference = async (req, res) => {
             message: 'Server error while deleting conference',
             error: error.message
         });
+    }
+};
+
+// @desc    Add a session to a conference
+// @route   POST /api/conferences/:id/sessions
+// @access  Private (Secretary only)
+exports.addSession = async (req, res) => {
+    try {
+        const conference = await Conference.findById(req.params.id);
+        if (!conference) {
+            return res.status(404).json({ success: false, message: 'Conference not found' });
+        }
+
+        const { name, startTime, endTime } = req.body;
+        if (!name) {
+            return res.status(400).json({ success: false, message: 'Session name is required' });
+        }
+
+        conference.sessions.push({ name, startTime, endTime, papers: [] });
+        await conference.save();
+
+        res.status(201).json({ success: true, data: conference });
+    } catch (error) {
+        console.error('Error in addSession:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Assign a paper to a session
+// @route   PUT /api/conferences/:id/sessions/:sessionId/papers
+// @access  Private (Secretary only)
+exports.assignPaperToSession = async (req, res) => {
+    try {
+        const conference = await Conference.findById(req.params.id);
+        if (!conference) {
+            return res.status(404).json({ success: false, message: 'Conference not found' });
+        }
+
+        const session = conference.sessions.id(req.params.sessionId);
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        const { paperId } = req.body;
+        if (!paperId) {
+            return res.status(400).json({ success: false, message: 'Paper ID is required' });
+        }
+
+        // Prevent duplicate paper assignment in the same session
+        if (!session.papers.includes(paperId)) {
+            session.papers.push(paperId);
+            await conference.save();
+        }
+
+        res.status(200).json({ success: true, data: conference });
+    } catch (error) {
+        console.error('Error in assignPaperToSession:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

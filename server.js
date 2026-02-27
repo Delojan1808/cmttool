@@ -9,6 +9,7 @@ const paperRoutes = require('./routes/paperRoutes');
 const fieldRoutes = require('./routes/fieldRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const conferenceRoutes = require('./routes/conferenceRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Passport config
 require('./config/passport')(passport);
@@ -48,6 +49,7 @@ app.use('/api/papers', paperRoutes);
 app.use('/api/fields', fieldRoutes); // Mount fields API
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/conferences', conferenceRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {

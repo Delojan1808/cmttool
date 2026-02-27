@@ -104,11 +104,11 @@ router.put(
     declineReview
 );
 
-// Assign a reviewer to a paper (Secretary, Editor)
+// Assign a reviewer to a paper (Secretary, Editor, Sub Editor)
 router.put(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary', 'Editor'),
+    requireRole('Secretary', 'Editor', 'Sub Editor'),
     assignReviewer
 );
 
@@ -123,11 +123,11 @@ router.put(
 // Delete paper (Author or Secretary - permission checked in controller)
 router.delete('/:id', authMiddleware, deletePaper);
 
-// Unassign reviewer from a paper (Secretary, Editor)
+// Unassign reviewer from a paper (Secretary, Editor, Sub Editor)
 router.delete(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary', 'Editor'),
+    requireRole('Secretary', 'Editor', 'Sub Editor'),
     unassignReviewer
 );
 
