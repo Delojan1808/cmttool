@@ -6,7 +6,7 @@ const { sendEmail } = require('../utils/emailService');
 // @desc    Register a new user (Author only - public registration)
 // @route   POST /api/auth/register
 // @access  Public
-const register = async (req, res) => {
+const register = async (req, res, next) => {
     try {
         // Check for validation errors
         const errors = validationResult(req);

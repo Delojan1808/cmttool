@@ -32,6 +32,21 @@ exports.createConference = async (req, res) => {
             }
         }
 
+        // Validate dates
+        const now = new Date();
+        const subDeadline = new Date(submissionDeadline);
+        const confDate = new Date(conferenceDate);
+
+        if (subDeadline <= now) {
+            return res.status(400).json({ success: false, message: 'Submission deadline must be a future date.' });
+        }
+        if (confDate <= now) {
+            return res.status(400).json({ success: false, message: 'Conference date must be a future date.' });
+        }
+        if (confDate <= subDeadline) {
+            return res.status(400).json({ success: false, message: 'Conference date must be after the submission deadline.' });
+        }
+
         const conference = await Conference.create({
             title,
             professionalFields: fieldIds,
@@ -115,6 +130,15 @@ exports.updateConference = async (req, res) => {
                 }
             }
             req.body.professionalFields = fieldIds;
+        }
+
+        // Validate dates if they are being updated
+        if (req.body.submissionDeadline || req.body.conferenceDate) {
+            const subDeadline = new Date(req.body.submissionDeadline || conference.submissionDeadline);
+            const confDate = new Date(req.body.conferenceDate || conference.conferenceDate);
+            if (confDate <= subDeadline) {
+                return res.status(400).json({ success: false, message: 'Conference date must be after the submission deadline.' });
+            }
         }
 
         conference = await Conference.findByIdAndUpdate(req.params.id, req.body, {
