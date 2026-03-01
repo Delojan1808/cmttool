@@ -1,136 +1,65 @@
 const mongoose = require('mongoose');
+const { Schema, model } = mongoose;
 
-const paperSchema = new mongoose.Schema(
+const PaperSchema = new Schema(
     {
-        // Metadata
-        title: {
-            type: String,
-            required: [true, 'Paper title is required'],
-            trim: true,
-            maxlength: [300, 'Title cannot exceed 300 characters']
-        },
-        abstract: {
-            type: String,
-            required: [true, 'Abstract is required'],
-            maxlength: [2000, 'Abstract cannot exceed 2000 characters']
-        },
-        keywords: {
-            type: [String],
-            validate: {
-                validator: function (v) {
-                    return v && v.length > 0 && v.length <= 10;
-                },
-                message: 'Please provide 1-10 keywords'
-            }
-        },
-        category: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'ProfessionalField',
-            required: [true, 'Professional field (category) is required']
-        },
+        title: { type: String, required: true },
+
+        abstract: String,
+
+        keywords: [String],
+
+        authors: [{
+            type: Schema.Types.ObjectId,
+            ref: "User"
+        }],
 
         conference: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Conference',
-            required: [true, 'A paper must belong to a conference']
-        },
-
-        // Author Information
-        author: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
+            type: Schema.Types.ObjectId,
+            ref: "Conference",
             required: true
         },
-        coAuthors: [
-            {
-                name: {
-                    type: String,
-                    required: true
-                },
-                email: {
-                    type: String,
-                    match: [
-                        /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-                        'Please provide a valid email address'
-                    ]
-                },
-                affiliation: String
-            }
-        ],
 
-        // File Information
-        filename: {
-            type: String,
-            required: true
-        },
-        originalName: {
-            type: String,
-            required: true
-        },
-        filePath: {
-            type: String,
-            required: true
-        },
-        fileSize: {
-            type: Number,
-            required: true
-        },
-        mimeType: {
-            type: String,
-            default: 'application/pdf'
+        field: {
+            type: Schema.Types.ObjectId,
+            ref: "ProfessionalField"
         },
 
-        // Status and Workflow
-        status: {
-            type: String,
-            enum: ['draft', 'submitted', 'under_review', 'reviewed', 'accepted', 'rejected', 'revision_required'],
-            default: 'submitted'
-        },
+        fileUrl: String,
+        fileName: String,
 
-        // Review Information
-        assignedReviewers: [
-            {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'User'
-            }
-        ],
-        reviewDeadline: {
-            type: Date
-        },
-        reviewComments: {
-            type: String,
-            maxlength: [5000, 'Review comments cannot exceed 5000 characters']
-        },
-        reviewedAt: {
-            type: Date
-        },
-
-        // Submission metadata
-        submittedAt: {
+        submissionDate: {
             type: Date,
             default: Date.now
-        }
+        },
+
+        status: {
+            type: String,
+            enum: [
+                "submitted",
+                "under_review",
+                "revision_required",
+                "accepted",
+                "rejected"
+            ],
+            default: "submitted"
+        },
+
+        finalDecision: String,
+
+        decisionBy: {
+            type: Schema.Types.ObjectId,
+            ref: "User"
+        },
+
+        decisionDate: Date
     },
-    {
-        timestamps: true
-    }
+    { timestamps: true }
 );
 
-// Index for efficient queries
-paperSchema.index({ author: 1, createdAt: -1 });
-paperSchema.index({ status: 1 });
-paperSchema.index({ category: 1 });
+PaperSchema.index({ conference: 1 });
+PaperSchema.index({ authors: 1 });
+PaperSchema.index({ status: 1 });
 
-// Virtual for author's full name (when populated)
-paperSchema.virtual('authorName').get(function () {
-    return this.author && this.author.name ? this.author.name : 'Unknown';
-});
-
-// Method to check if user can edit this paper
-paperSchema.methods.canEdit = function (userId) {
-    return this.author.toString() === userId.toString();
-};
-
-const Paper = mongoose.model('Paper', paperSchema);
-
+const Paper = model("Paper", PaperSchema);
 module.exports = Paper;

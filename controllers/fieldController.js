@@ -7,8 +7,8 @@ const { validationResult } = require('express-validator');
 const getFields = async (req, res) => {
     try {
         const fields = await ProfessionalField.find({})
-            .populate('subEditor', 'name email')
-            .sort('name');
+            .populate('subEditors', 'name email')
+            .sort('fieldName');
         res.status(200).json({
             success: true,
             count: fields.length,
@@ -37,7 +37,7 @@ const createField = async (req, res) => {
         const { name } = req.body;
 
         // Ensure uniqueness
-        const fieldExists = await ProfessionalField.findOne({ name: new RegExp('^' + name + '$', 'i') });
+        const fieldExists = await ProfessionalField.findOne({ fieldName: new RegExp('^' + name + '$', 'i') });
         if (fieldExists) {
             return res.status(400).json({
                 success: false,
@@ -45,7 +45,7 @@ const createField = async (req, res) => {
             });
         }
 
-        const field = await ProfessionalField.create({ name });
+        const field = await ProfessionalField.create({ fieldName: name });
 
         res.status(201).json({
             success: true,
@@ -82,7 +82,7 @@ const updateField = async (req, res) => {
         }
 
         // Check for duplicate name
-        const duplicate = await ProfessionalField.findOne({ name: new RegExp('^' + name + '$', 'i') });
+        const duplicate = await ProfessionalField.findOne({ fieldName: new RegExp('^' + name + '$', 'i') });
         if (duplicate && duplicate._id.toString() !== req.params.id) {
             return res.status(400).json({
                 success: false,
@@ -90,7 +90,7 @@ const updateField = async (req, res) => {
             });
         }
 
-        field.name = name;
+        field.fieldName = name;
         await field.save();
 
         res.status(200).json({
@@ -156,11 +156,11 @@ const assignSubEditor = async (req, res) => {
         }
 
         // Allow null assignment (unassign) or a valid ID
-        field.subEditor = subEditorId || null;
+        field.subEditors = subEditorId ? [subEditorId] : [];
         await field.save();
 
         // Populate so caller gets updated details
-        field = await ProfessionalField.findById(field._id).populate('subEditor', 'name email');
+        field = await ProfessionalField.findById(field._id).populate('subEditors', 'name email');
 
         res.status(200).json({
             success: true,

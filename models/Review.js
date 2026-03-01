@@ -1,74 +1,52 @@
 const mongoose = require('mongoose');
+const { Schema, model } = mongoose;
 
-const evaluationSchema = new mongoose.Schema({
-    answer: {
-        type: Boolean,
-        required: true // true = Yes, false = No
-    },
-    comment: {
-        type: String,
-        required: function () { return this.answer === false; } // Comment is strictly required if answer = No
-    }
-}, { _id: false });
-
-const reviewSchema = new mongoose.Schema(
+const ReviewSchema = new Schema(
     {
         paper: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Paper',
-            required: [true, 'Paper reference is required']
+            type: Schema.Types.ObjectId,
+            ref: "Paper",
+            required: true
         },
+
         reviewer: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: [true, 'Reviewer reference is required']
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true
         },
-        evaluations: {
-            q1_topicRelevant: evaluationSchema,
-            q2_titleRelevant: evaluationSchema,
-            q3_objectivesClear: evaluationSchema,
-            q4_methodologyAppropriate: evaluationSchema,
-            q5_resultsInterpreted: evaluationSchema,
-            q6_conclusionTies: evaluationSchema,
-            q7_grammarSpelling: evaluationSchema,
-            q8_formattingAdheres: evaluationSchema,
-            q9_noPlagiarism: evaluationSchema
-        },
+
         recommendation: {
             type: String,
-            required: [true, 'Recommendation is required'],
             enum: [
-                'Accept',
-                'Accept with minor revisions',
-                'Reconsider after major revisions',
-                'Reject'
+                "strong_accept",
+                "accept",
+                "minor_revision",
+                "major_revision",
+                "reject"
             ]
         },
-        suggestions: {
-            type: String
+
+        score: Number,
+
+        commentsToAuthor: String,
+        confidentialComments: String,
+
+        status: {
+            type: String,
+            enum: ["assigned", "submitted"],
+            default: "assigned"
         },
-        otherComments: {
-            type: String
-        },
-        reviewerInfo: {
-            nameWithInitials: { type: String, required: true },
-            designation: { type: String, required: true },
-            institution: { type: String, required: true },
-            email: {
-                type: String,
-                required: true,
-                match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please add a valid email'],
-            },
-            contactNumber: { type: String, required: true },
-            date: { type: Date, default: Date.now }
-        }
+
+        submittedAt: Date
     },
-    {
-        timestamps: true
-    }
+    { timestamps: true }
 );
 
-// A reviewer can only submit ONE review per paper
-reviewSchema.index({ paper: 1, reviewer: 1 }, { unique: true });
+/* One reviewer → one review per paper */
+ReviewSchema.index(
+    { paper: 1, reviewer: 1 },
+    { unique: true }
+);
 
-module.exports = mongoose.model('Review', reviewSchema);
+const Review = model("Review", ReviewSchema);
+module.exports = Review;

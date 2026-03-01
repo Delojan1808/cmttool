@@ -1,29 +1,46 @@
 const mongoose = require('mongoose');
+const { Schema, model } = mongoose;
 
-const notificationSchema = new mongoose.Schema({
-    user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
-    },
-    message: {
-        type: String,
-        required: true
-    },
-    type: {
-        type: String,
-        enum: ['status_update', 'assignment', 'general'],
-        default: 'general'
-    },
-    relatedPaper: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Paper'
-    },
-    read: {
-        type: Boolean,
-        default: false
-    }
-}, { timestamps: true });
+const NotificationSchema = new Schema(
+    {
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true
+        },
 
-const Notification = mongoose.model('Notification', notificationSchema);
+        title: String,
+        message: String,
+
+        type: {
+            type: String,
+            enum: [
+                "submission",
+                "review_assignment",
+                "decision",
+                "deadline"
+            ]
+        },
+
+        relatedPaper: {
+            type: Schema.Types.ObjectId,
+            ref: "Paper"
+        },
+
+        read: {
+            type: Boolean,
+            default: false
+        },
+
+        isDeleted: {
+            type: Boolean,
+            default: false
+        }
+    },
+    { timestamps: true }
+);
+
+NotificationSchema.index({ user: 1, read: 1 });
+
+const Notification = model("Notification", NotificationSchema);
 module.exports = Notification;

@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Conference = require('../models/Conference');
 const ProfessionalField = require('../models/ProfessionalField');
 const Notification = require('../models/Notification');
+const Review = require('../models/Review');
 const fs = require('fs');
 const path = require('path');
 const { sendEmail } = require('../utils/emailService');
@@ -12,146 +13,77 @@ const { sendEmail } = require('../utils/emailService');
 // @access  Private (Author+)
 const uploadPaper = async (req, res) => {
     try {
-        // Check if file was uploaded
         if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please upload a PDF file'
-            });
+            return res.status(400).json({ success: false, message: 'Please upload a PDF file' });
         }
 
-        // Extract metadata from request body
-        const { title, abstract, keywords, category, coAuthors, conferenceId } = req.body;
+        const { title, abstract, keywords, field, authors, conferenceId } = req.body;
 
-        // Validate required fields
-        if (!title || !abstract || !category || !conferenceId) {
-            // Delete uploaded file if validation fails
+        if (!title || !abstract || !field || !conferenceId) {
             fs.unlinkSync(req.file.path);
-            return res.status(400).json({
-                success: false,
-                message: 'Title, abstract, category, and conference selection are required'
-            });
+            return res.status(400).json({ success: false, message: 'Title, abstract, field, and conference selection are required' });
         }
 
-        // Resolve category name → ProfessionalField ObjectId
         const mongoose = require('mongoose');
-        let categoryId;
-        if (mongoose.Types.ObjectId.isValid(category)) {
-            categoryId = category;
+        let fieldId;
+        if (mongoose.Types.ObjectId.isValid(field)) {
+            fieldId = field;
         } else {
-            const fieldDoc = await ProfessionalField.findOne({ name: category });
+            const fieldDoc = await ProfessionalField.findOne({ fieldName: field });
             if (!fieldDoc) {
                 fs.unlinkSync(req.file.path);
-                return res.status(400).json({ success: false, message: `Professional field "${category}" not found` });
+                return res.status(400).json({ success: false, message: `Professional field "${field}" not found` });
             }
-            categoryId = fieldDoc._id;
+            fieldId = fieldDoc._id;
         }
 
-        // Validate conference exists
         const conference = await Conference.findById(conferenceId).populate('createdBy', 'name email');
         if (!conference) {
             fs.unlinkSync(req.file.path);
-            return res.status(404).json({
-                success: false,
-                message: 'Selected conference not found'
-            });
+            return res.status(404).json({ success: false, message: 'Selected conference not found' });
         }
 
-        // Validate submission deadline
         if (new Date() > new Date(conference.submissionDeadline)) {
             fs.unlinkSync(req.file.path);
-            return res.status(400).json({
-                success: false,
-                message: 'Submission deadline for this conference has passed'
-            });
+            return res.status(400).json({ success: false, message: 'Submission deadline for this conference has passed' });
         }
 
-        // Parse keywords (can be sent as comma-separated string or array)
         let parsedKeywords = keywords;
         if (typeof keywords === 'string') {
             parsedKeywords = keywords.split(',').map(k => k.trim()).filter(k => k);
         }
 
-        // Parse coAuthors if provided
-        let parsedCoAuthors = [];
-        if (coAuthors) {
+        let parsedAuthors = [req.user._id];
+        if (authors) {
             try {
-                parsedCoAuthors = typeof coAuthors === 'string'
-                    ? JSON.parse(coAuthors)
-                    : coAuthors;
-            } catch (err) {
-                // If parsing fails, ignore coAuthors
-                parsedCoAuthors = [];
-            }
+                const addl = typeof authors === 'string' ? JSON.parse(authors) : authors;
+                parsedAuthors = [...new Set([...parsedAuthors.map(id => id.toString()), ...addl])];
+            } catch (err) { }
         }
 
-        // Create paper document
         const paper = await Paper.create({
             title,
             abstract,
             keywords: parsedKeywords,
-            category: categoryId,
-            coAuthors: parsedCoAuthors,
-            author: req.user._id,
+            field: fieldId,
+            authors: parsedAuthors,
             conference: conferenceId,
-            filename: req.file.filename,
-            originalName: req.file.originalname,
-            filePath: req.file.path,
-            fileSize: req.file.size,
-            mimeType: req.file.mimetype,
-            assignedReviewers: []
+            fileName: req.file.originalname,
+            fileUrl: req.file.path
         });
 
-        // Send confirmation email to Author asynchronously
         sendEmail({
             to: req.user.email,
             subject: `Submission Confirmation: ${paper.title}`,
-            text: `Hello ${req.user.name},\n\nYour paper titled "${paper.title}" has been successfully submitted to the conference.\n\nYou can track its status from your Author Dashboard.\n\nThank you,\nCMT System`,
-            html: `<p>Hello ${req.user.name},</p><p>Your paper titled <strong>"${paper.title}"</strong> has been successfully submitted to the conference.</p><p>You can track its status from your Author Dashboard.</p><p>Thank you,<br/>CMT System</p>`
+            text: `Hello ${req.user.name},\n\nYour paper titled "${paper.title}" has been successfully submitted.\n\nThank you,\nCMT System`,
+            html: `<p>Hello ${req.user.name},</p><p>Your paper titled <strong>"${paper.title}"</strong> has been successfully submitted.</p><p>Thank you,<br/>CMT System</p>`
         });
 
-        // Send notification email to the Secretary who created the conference asynchronously
-        if (conference && conference.createdBy) {
-            sendEmail({
-                to: conference.createdBy.email,
-                subject: `New Paper Submission: ${paper.title}`,
-                text: `Hello ${conference.createdBy.name},\n\nA new paper titled "${paper.title}" has been submitted to your conference "${conference.title}" by ${req.user.name}.\n\nThank you,\nCMT System`,
-                html: `<p>Hello ${conference.createdBy.name},</p><p>A new paper titled <strong>"${paper.title}"</strong> has been submitted to your conference <strong>"${conference.title}"</strong> by ${req.user.name}.</p><p>Thank you,<br/>CMT System</p>`
-            });
-        }
-
-        res.status(201).json({
-            success: true,
-            message: 'Paper uploaded successfully',
-            data: {
-                paper: {
-                    id: paper._id,
-                    title: paper.title,
-                    abstract: paper.abstract,
-                    keywords: paper.keywords,
-                    category: paper.category,
-                    filename: paper.filename,
-                    originalName: paper.originalName,
-                    fileSize: paper.fileSize,
-                    status: paper.status,
-                    submittedAt: paper.submittedAt,
-                    createdAt: paper.createdAt
-                }
-            }
-        });
+        res.status(201).json({ success: true, message: 'Paper uploaded successfully', data: { paper } });
     } catch (error) {
         console.error('Upload paper error:', error);
-
-        // Delete uploaded file if database save fails
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Server error during paper upload',
-            error: error.message
-        });
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -160,26 +92,16 @@ const uploadPaper = async (req, res) => {
 // @access  Private
 const getMyPapers = async (req, res) => {
     try {
-        const papers = await Paper.find({ author: req.user._id })
-            .populate('category', 'name')
-            .populate('conference', 'title conferenceDate submissionDeadline')
+        const papers = await Paper.find({ authors: req.user._id })
+            .populate('field', 'fieldName')
+            .populate('conference', 'title startDate submissionDeadline')
             .sort({ createdAt: -1 })
-            .select('-filePath'); // Don't expose file path
+            .select('-fileUrl');
 
-        res.status(200).json({
-            success: true,
-            count: papers.length,
-            data: {
-                papers
-            }
-        });
+        res.status(200).json({ success: true, count: papers.length, data: { papers } });
     } catch (error) {
         console.error('Get my papers error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while fetching papers',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -188,34 +110,29 @@ const getMyPapers = async (req, res) => {
 // @access  Private (Reviewer)
 const getAssignedPapers = async (req, res) => {
     try {
-        if (req.user.role !== 'Reviewer') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only Reviewers can fetch assigned papers'
-            });
+        if (!req.user.roles.includes('Reviewer')) {
+            return res.status(403).json({ success: false, message: 'Only Reviewers can fetch assigned papers' });
         }
 
-        const papers = await Paper.find({ assignedReviewers: req.user._id })
-            .populate('author', 'name email')
-            .populate('category', 'name')
-            .populate('conference', 'title')
-            .sort({ createdAt: -1 })
-            .select('-filePath'); // Don't expose file path in list
+        // Fetch assigned reviews instead
+        const reviews = await Review.find({ reviewer: req.user._id, status: 'assigned' })
+            .populate({
+                path: 'paper',
+                select: '-fileUrl',
+                populate: [
+                    { path: 'authors', select: 'name email' },
+                    { path: 'field', select: 'fieldName' },
+                    { path: 'conference', select: 'title' }
+                ]
+            })
+            .sort({ createdAt: -1 });
 
-        res.status(200).json({
-            success: true,
-            count: papers.length,
-            data: {
-                papers
-            }
-        });
+        const papers = reviews.map(r => r.paper);
+
+        res.status(200).json({ success: true, count: papers.length, data: { papers } });
     } catch (error) {
         console.error('Get assigned papers error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while fetching assigned papers',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -224,55 +141,47 @@ const getAssignedPapers = async (req, res) => {
 // @access  Private (Editor, Sub Editor, Secretary)
 const getAllPapers = async (req, res) => {
     try {
-        // Query parameters for filtering
-        const { status, category, author } = req.query;
+        const { status, field, author } = req.query;
 
         const filter = {};
         if (status) filter.status = status;
-        if (category) filter.category = category;
-        if (author) filter.author = author;
+        if (field) filter.field = field;
+        if (author) filter.authors = author;
 
-        // Restrict Sub-Editors to only see papers that belong to their assigned Professional Fields
-        if (req.user.role === 'Sub Editor') {
-            const assignedFields = await ProfessionalField.find({ subEditor: req.user._id });
-            const allowedCategoryIds = assignedFields.map(f => f._id);
+        if (req.user.roles.includes('Sub Editor')) {
+            const assignedFields = await ProfessionalField.find({ subEditors: req.user._id });
+            const allowedIds = assignedFields.map(f => f._id);
 
-            if (category) {
-                // If they requested a category by name, resolve to ObjectId first
-                const reqFieldDoc = await ProfessionalField.findOne({ name: category });
-                if (!reqFieldDoc || !allowedCategoryIds.some(id => id.equals(reqFieldDoc._id))) {
-                    filter.category = { $in: [] };
+            if (field) {
+                const reqField = await ProfessionalField.findOne({ fieldName: field });
+                if (!reqField || !allowedIds.some(id => id.equals(reqField._id))) {
+                    filter.field = { $in: [] };
                 } else {
-                    filter.category = reqFieldDoc._id;
+                    filter.field = reqField._id;
                 }
             } else {
-                // Show everything they have access to
-                filter.category = { $in: allowedCategoryIds };
+                filter.field = { $in: allowedIds };
             }
         }
 
         const papers = await Paper.find(filter)
-            .populate('author', 'name email')
-            .populate('category', 'name')
-            .populate('assignedReviewers', 'name email')
-            .populate('conference', 'title conferenceDate')
+            .populate('authors', 'name email')
+            .populate('field', 'fieldName')
+            .populate('conference', 'title startDate')
             .sort({ createdAt: -1 })
-            .select('-filePath');
+            .select('-fileUrl')
+            .lean();
 
-        res.status(200).json({
-            success: true,
-            count: papers.length,
-            data: {
-                papers
-            }
-        });
+        // Also populate assigned reviewers for dashboard view
+        for (let paper of papers) {
+            const reviews = await Review.find({ paper: paper._id }).populate('reviewer', 'name email');
+            paper.assignedReviewers = reviews.map(r => r.reviewer);
+        }
+
+        res.status(200).json({ success: true, count: papers.length, data: { papers } });
     } catch (error) {
         console.error('Get all papers error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while fetching papers',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -282,48 +191,30 @@ const getAllPapers = async (req, res) => {
 const getPaperById = async (req, res) => {
     try {
         const paper = await Paper.findById(req.params.id)
-            .populate('author', 'name email')
-            .populate('category', 'name')
-            .populate('assignedReviewers', 'name email')
-            .populate('conference', 'title conferenceDate submissionDeadline');
+            .populate('authors', 'name email')
+            .populate('field', 'fieldName')
+            .populate('conference', 'title startDate submissionDeadline')
+            .lean();
 
         if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
+            return res.status(404).json({ success: false, message: 'Paper not found' });
         }
 
-        // Check if user has permission to view
-        const isAssignedReviewer = paper.assignedReviewers && paper.assignedReviewers.some(
-            reviewer => reviewer._id.toString() === req.user._id.toString()
-        );
+        const reviews = await Review.find({ paper: paper._id }).populate('reviewer', 'name email');
+        paper.assignedReviewers = reviews.map(r => r.reviewer);
 
-        const canView =
-            paper.author._id.toString() === req.user._id.toString() ||
-            isAssignedReviewer ||
-            ['Secretary', 'Editor', 'Sub Editor'].includes(req.user.role);
+        const isAuthor = paper.authors.some(a => a._id.toString() === req.user._id.toString());
+        const isAssigned = paper.assignedReviewers.some(r => r._id.toString() === req.user._id.toString());
+        const hasElevatedPrivilege = req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role));
 
-        if (!canView) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to view this paper'
-            });
+        if (!isAuthor && !isAssigned && !hasElevatedPrivilege) {
+            return res.status(403).json({ success: false, message: 'You do not have permission to view this paper' });
         }
 
-        res.status(200).json({
-            success: true,
-            data: {
-                paper
-            }
-        });
+        res.status(200).json({ success: true, data: { paper } });
     } catch (error) {
         console.error('Get paper by ID error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while fetching paper',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -335,100 +226,57 @@ const updatePaper = async (req, res) => {
         const paper = await Paper.findById(req.params.id);
 
         if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
+            return res.status(404).json({ success: false, message: 'Paper not found' });
         }
 
-        // Check if user is the author
-        if (paper.author.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: 'You can only update your own papers'
-            });
+        if (!paper.authors.includes(req.user._id)) {
+            return res.status(403).json({ success: false, message: 'You can only update your own papers' });
         }
 
-        // Check if paper status allows for updates
         const updatableStatuses = ['submitted', 'revision_required', 'accepted'];
         if (!updatableStatuses.includes(paper.status)) {
-            return res.status(403).json({
-                success: false,
-                message: `Paper cannot be edited while in '${paper.status}' status`
-            });
+            return res.status(403).json({ success: false, message: `Paper cannot be edited while in '${paper.status}' status` });
         }
 
-        // Only allow updating certain fields
-        const { title, abstract, keywords, category, coAuthors } = req.body;
+        const { title, abstract, keywords, field, authors } = req.body;
 
         if (title) paper.title = title;
         if (abstract) paper.abstract = abstract;
         if (keywords) {
-            // Support keywords as a comma-separated string or array
-            if (typeof keywords === 'string') {
-                paper.keywords = keywords.split(',').map(k => k.trim()).filter(k => k);
-            } else {
-                paper.keywords = keywords;
-            }
+            paper.keywords = typeof keywords === 'string' ? keywords.split(',').map(k => k.trim()).filter(k => k) : keywords;
         }
-        if (category) {
-            // Resolve category name → ObjectId if needed
+        if (field) {
             const mongoose = require('mongoose');
-            if (mongoose.Types.ObjectId.isValid(category)) {
-                paper.category = category;
+            if (mongoose.Types.ObjectId.isValid(field)) {
+                paper.field = field;
             } else {
-                const fieldDoc = await ProfessionalField.findOne({ name: category });
-                if (fieldDoc) paper.category = fieldDoc._id;
+                const fieldDoc = await ProfessionalField.findOne({ fieldName: field });
+                if (fieldDoc) paper.field = fieldDoc._id;
             }
         }
-        if (coAuthors) {
+        if (authors) {
             try {
-                paper.coAuthors = typeof coAuthors === 'string'
-                    ? JSON.parse(coAuthors)
-                    : coAuthors;
-            } catch (err) {
-                // Ignore if parse fails
-            }
+                paper.authors = typeof authors === 'string' ? JSON.parse(authors) : authors;
+            } catch (err) { }
         }
 
-        // If a new PDF file is uploaded, update file fields and remove the old file
         if (req.file) {
-            if (fs.existsSync(paper.filePath)) {
-                fs.unlinkSync(paper.filePath);
+            if (paper.fileUrl && fs.existsSync(paper.fileUrl)) {
+                try { fs.unlinkSync(paper.fileUrl); } catch (e) { }
             }
-            paper.filename = req.file.filename;
-            paper.originalName = req.file.originalname;
-            paper.filePath = req.file.path;
-            paper.fileSize = req.file.size;
-            paper.mimeType = req.file.mimetype;
+            paper.fileName = req.file.originalname;
+            paper.fileUrl = req.file.path;
 
-            // Note: Re-uploads are used for revisions and camera-ready.
-            // When an author re-uploads a paper in 'revision_required', we update status back to 'submitted'
-            // to indicate they handled the revision.
             if (paper.status === 'revision_required') {
                 paper.status = 'submitted';
-
-                // Also send a notification to the assigned reviewer (if any) or sub-editor?
-                // Left out for brevity unless specifically needed.
             }
         }
 
         await paper.save();
-
-        res.status(200).json({
-            success: true,
-            message: 'Paper updated successfully',
-            data: {
-                paper
-            }
-        });
+        res.status(200).json({ success: true, message: 'Paper updated', data: { paper } });
     } catch (error) {
         console.error('Update paper error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while updating paper',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -438,45 +286,21 @@ const updatePaper = async (req, res) => {
 const deletePaper = async (req, res) => {
     try {
         const paper = await Paper.findById(req.params.id);
+        if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
 
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
+        const canDelete = paper.authors.includes(req.user._id) || req.user.roles.includes('Secretary');
+        if (!canDelete) return res.status(403).json({ success: false, message: 'You do not have permission to delete this paper' });
+
+        if (paper.fileUrl && fs.existsSync(paper.fileUrl)) {
+            try { fs.unlinkSync(paper.fileUrl); } catch (e) { }
         }
 
-        // Check if user is author or secretary
-        const canDelete =
-            paper.author.toString() === req.user._id.toString() ||
-            req.user.role === 'Secretary';
-
-        if (!canDelete) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to delete this paper'
-            });
-        }
-
-        // Delete the file from filesystem
-        if (fs.existsSync(paper.filePath)) {
-            fs.unlinkSync(paper.filePath);
-        }
-
-        // Delete from database
         await Paper.findByIdAndDelete(req.params.id);
+        await Review.deleteMany({ paper: req.params.id }); // Clean up reviews
 
-        res.status(200).json({
-            success: true,
-            message: 'Paper deleted successfully'
-        });
+        res.status(200).json({ success: true, message: 'Paper deleted successfully' });
     } catch (error) {
-        console.error('Delete paper error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while deleting paper',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -486,53 +310,27 @@ const deletePaper = async (req, res) => {
 const downloadPaper = async (req, res) => {
     try {
         const paper = await Paper.findById(req.params.id);
+        if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
 
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
+        const reviews = await Review.find({ paper: paper._id });
+        const isAssigned = reviews.some(r => r.reviewer.toString() === req.user._id.toString());
+        const isAuthor = paper.authors.includes(req.user._id);
+        const hasElevated = req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role));
+
+        if (!isAuthor && !isAssigned && !hasElevated) {
+            return res.status(403).json({ success: false, message: 'Permission denied' });
         }
 
-        const isAssignedReviewer = paper.assignedReviewers && paper.assignedReviewers.some(
-            reviewer => reviewer.toString() === req.user._id.toString()
-        );
-
-        // Check if user has permission to download
-        const canDownload =
-            paper.author.toString() === req.user._id.toString() ||
-            isAssignedReviewer ||
-            ['Secretary', 'Editor', 'Sub Editor'].includes(req.user.role);
-
-        if (!canDownload) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to download this paper'
-            });
+        if (!paper.fileUrl || !fs.existsSync(paper.fileUrl)) {
+            return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
-        // Check if file exists
-        if (!fs.existsSync(paper.filePath)) {
-            return res.status(404).json({
-                success: false,
-                message: 'File not found on server'
-            });
-        }
-
-        // Set headers for file download
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${paper.originalName}"`);
-
-        // Stream the file
-        const fileStream = fs.createReadStream(paper.filePath);
+        res.setHeader('Content-Disposition', `attachment; filename="${paper.fileName || 'paper.pdf'}"`);
+        const fileStream = fs.createReadStream(paper.fileUrl);
         fileStream.pipe(res);
     } catch (error) {
-        console.error('Download paper error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while downloading paper',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -541,24 +339,13 @@ const downloadPaper = async (req, res) => {
 // @access  Private (Secretary)
 const getReviewers = async (req, res) => {
     try {
-        const query = { role: 'Reviewer' };
-        if (req.query.category) {
-            query.professionalField = req.query.category;
-        }
-        const reviewers = await User.find(query).select('name email professionalField');
+        const query = { roles: 'Reviewer' };
+        if (req.query.field) query.professionalFields = req.query.field;
 
-        res.status(200).json({
-            success: true,
-            count: reviewers.length,
-            data: { reviewers }
-        });
+        const reviewers = await User.find(query).select('name email professionalFields');
+        res.status(200).json({ success: true, count: reviewers.length, data: { reviewers } });
     } catch (error) {
-        console.error('Get reviewers error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while fetching reviewers',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -567,86 +354,40 @@ const getReviewers = async (req, res) => {
 // @access  Private (Secretary, Editor)
 const assignReviewer = async (req, res) => {
     try {
-        // Secretary, Editor, and Sub Editor can assign reviewers
-        if (!['Secretary', 'Editor', 'Sub Editor'].includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'You are not authorized to assign reviewers'
-            });
+        if (!req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role))) {
+            return res.status(403).json({ success: false, message: 'You are not authorized to assign reviewers' });
         }
 
-        const { reviewerId, reviewDeadline } = req.body;
-        if (!reviewerId) {
-            return res.status(400).json({
-                success: false,
-                message: 'reviewerId is required'
-            });
-        }
+        const { reviewerId } = req.body;
+        if (!reviewerId) return res.status(400).json({ success: false, message: 'reviewerId is required' });
 
         const paper = await Paper.findById(req.params.id);
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
+        if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
+
+        const reviewer = await User.findById(reviewerId);
+        if (!reviewer || !reviewer.roles.includes('Reviewer')) {
+            return res.status(404).json({ success: false, message: 'User is not a Reviewer' });
         }
 
-        // Validate that the reviewer exists and has the Reviewer role
-        const reviewer = await User.findById(reviewerId).select('name email role professionalField');
-        if (!reviewer || reviewer.role !== 'Reviewer') {
-            return res.status(404).json({
-                success: false,
-                message: 'Reviewer not found or user does not have the Reviewer role'
-            });
-        }
+        // Check if review already exists
+        const existingReview = await Review.findOne({ paper: paper._id, reviewer: reviewer._id });
+        if (existingReview) return res.status(400).json({ success: false, message: 'Already assigned' });
 
-        // Check if reviewer is already assigned
-        if (paper.assignedReviewers.includes(reviewerId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Reviewer is already assigned to this paper'
-            });
-        }
+        // Create assignment
+        await Review.create({
+            paper: paper._id,
+            reviewer: reviewer._id,
+            status: 'assigned'
+        });
 
-        // Push reviewer back to array
-        paper.assignedReviewers.push(reviewerId);
-
-        // Set review deadline (default to 14 days from now if not provided)
-        paper.reviewDeadline = reviewDeadline ? new Date(reviewDeadline) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-
-        // Update status to under review if this is the first reviewer assigned and status is 'submitted'
         if (paper.status === 'submitted') {
             paper.status = 'under_review';
+            await paper.save();
         }
 
-        await paper.save();
-
-        // Return populated paper
-        const updatedPaper = await Paper.findById(paper._id)
-            .populate('author', 'name email')
-            .populate('assignedReviewers', 'name email')
-            .select('-filePath');
-
-        // Send email notification to reviewer asynchronously
-        sendEmail({
-            to: reviewer.email,
-            subject: `Action Required: You have been assigned to review a paper`,
-            text: `Hello ${reviewer.name},\n\nYou have been assigned to review the paper titled "${updatedPaper.title}".\n\nPlease log in to your dashboard to complete the review.\n\nThank you,\nCMT System`,
-            html: `<p>Hello ${reviewer.name},</p><p>You have been assigned to review the paper titled <strong>"${updatedPaper.title}"</strong>.</p><p>Please log in to your dashboard to complete the review.</p><p>Thank you,<br/>CMT System</p>`
-        });
-
-        res.status(200).json({
-            success: true,
-            message: `Reviewer "${reviewer.name}" assigned to paper successfully`,
-            data: { paper: updatedPaper }
-        });
+        res.status(200).json({ success: true, message: 'Reviewer assigned successfully' });
     } catch (error) {
-        console.error('Assign reviewer error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while assigning reviewer',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -655,66 +396,29 @@ const assignReviewer = async (req, res) => {
 // @access  Private (Secretary, Editor)
 const unassignReviewer = async (req, res) => {
     try {
-        // Only Secretary and Editor can unassign reviewers
-        if (!['Secretary', 'Editor'].includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only the Secretary or Editor can unassign reviewers'
-            });
+        if (!req.user.roles.some(role => ['Secretary', 'Editor'].includes(role))) {
+            return res.status(403).json({ success: false, message: 'Only Secretary or Editor can unassign' });
         }
 
         const { reviewerId } = req.body;
-        if (!reviewerId) {
-            return res.status(400).json({
-                success: false,
-                message: 'reviewerId is required in the request body'
-            });
+        if (!reviewerId) return res.status(400).json({ success: false, message: 'reviewerId required' });
+
+        const deleted = await Review.findOneAndDelete({ paper: req.params.id, reviewer: reviewerId });
+        if (!deleted) return res.status(400).json({ success: false, message: 'Not assigned' });
+
+        // Revert paper status if no reviewers left
+        const remaining = await Review.countDocuments({ paper: req.params.id });
+        if (remaining === 0) {
+            const paper = await Paper.findById(req.params.id);
+            if (paper && paper.status === 'under_review') {
+                paper.status = 'submitted';
+                await paper.save();
+            }
         }
 
-        const paper = await Paper.findById(req.params.id);
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
-        }
-
-        if (!paper.assignedReviewers || !paper.assignedReviewers.includes(reviewerId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'This reviewer is not assigned to this paper'
-            });
-        }
-
-        // Filter out the reviewer
-        paper.assignedReviewers = paper.assignedReviewers.filter(
-            id => id.toString() !== reviewerId.toString()
-        );
-
-        // Revert status if there are no more reviewers
-        if (paper.assignedReviewers.length === 0 && paper.status === 'under_review') {
-            paper.status = 'submitted';
-        }
-
-        await paper.save();
-
-        const updatedPaper = await Paper.findById(paper._id)
-            .populate('author', 'name email')
-            .populate('assignedReviewers', 'name email')
-            .select('-filePath');
-
-        res.status(200).json({
-            success: true,
-            message: 'Reviewer unassigned from paper successfully',
-            data: { paper: updatedPaper }
-        });
+        res.status(200).json({ success: true, message: 'Unassigned successfully' });
     } catch (error) {
-        console.error('Unassign reviewer error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while unassigning reviewer',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -723,72 +427,28 @@ const unassignReviewer = async (req, res) => {
 // @access  Private (Editor, Sub Editor)
 const updatePaperStatus = async (req, res) => {
     try {
-        if (!['Editor', 'Sub Editor'].includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only Editors and Sub Editors can change paper status'
-            });
+        if (!req.user.roles.some(role => ['Editor', 'Sub Editor'].includes(role))) {
+            return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
         const { status } = req.body;
-        const validStatuses = ['accepted', 'rejected', 'revision_required'];
-        if (!validStatuses.includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: `Status must be one of: ${validStatuses.join(', ')}`
-            });
-        }
+        const paper = await Paper.findById(req.params.id).populate('authors');
+        if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
 
-        const paper = await Paper.findById(req.params.id).populate('author', 'name email');
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
-        }
-
-        // Sub Editor can only update papers in their category
-        if (req.user.role === 'Sub Editor') {
-            const field = await ProfessionalField.findOne({ _id: paper.category, subEditor: req.user._id });
-            if (!field) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not the assigned Sub Editor for this paper's category"
-                });
-            }
+        if (req.user.roles.includes('Sub Editor') && !req.user.roles.includes('Editor')) {
+            const field = await ProfessionalField.findOne({ _id: paper.field, subEditors: req.user._id });
+            if (!field) return res.status(403).json({ success: false, message: "Not assigned to this field" });
         }
 
         paper.status = status;
+        paper.finalDecision = status;
+        paper.decisionBy = req.user._id;
+        paper.decisionDate = new Date();
         await paper.save();
 
-        // Create in-app notification for the author
-        await Notification.create({
-            user: paper.author._id,
-            message: `The status of your paper "${paper.title}" has been updated to: ${status.replace('_', ' ').toUpperCase()}.`,
-            type: 'status_update',
-            relatedPaper: paper._id
-        });
-
-        // Send email to Author asynchronously
-        sendEmail({
-            to: paper.author.email,
-            subject: `Update on your submission: ${paper.title}`,
-            text: `Hello ${paper.author.name},\n\nThe status of your paper "${paper.title}" has been updated to: ${status.toUpperCase()}.\n\nPlease log in to the CMT Dashboard for more details.\n\nThank you,\nCMT System`,
-            html: `<p>Hello ${paper.author.name},</p><p>The status of your paper <strong>"${paper.title}"</strong> has been updated to: <strong>${status.toUpperCase()}</strong>.</p><p>Please log in to the CMT Dashboard for more details.</p><p>Thank you,<br/>CMT System</p>`
-        });
-
-        res.status(200).json({
-            success: true,
-            message: 'Paper status updated and author notified successfully',
-            data: { paper }
-        });
+        res.status(200).json({ success: true, message: 'Status updated', data: { paper } });
     } catch (error) {
-        console.error('Update paper status error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while updating paper status',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -797,67 +457,22 @@ const updatePaperStatus = async (req, res) => {
 // @access  Private (Reviewer)
 const declineReview = async (req, res) => {
     try {
-        const paper = await Paper.findById(req.params.id);
+        const deleted = await Review.findOneAndDelete({ paper: req.params.id, reviewer: req.user._id });
+        if (!deleted) return res.status(400).json({ success: false, message: 'Not assigned' });
 
-        if (!paper) {
-            return res.status(404).json({
-                success: false,
-                message: 'Paper not found'
-            });
-        }
-
-        // Check if the current user is an assigned reviewer
-        if (!paper.assignedReviewers || !paper.assignedReviewers.includes(req.user._id)) {
-            return res.status(403).json({
-                success: false,
-                message: 'You are not an assigned reviewer for this paper'
-            });
-        }
-
-        // Unassign by filtering them out of array
-        paper.assignedReviewers = paper.assignedReviewers.filter(
-            id => id.toString() !== req.user._id.toString()
-        );
-
-        if (paper.assignedReviewers.length === 0 && paper.status === 'under_review') {
-            paper.status = 'submitted';
-        }
-
-        await paper.save();
-
-        const updatedPaper = await Paper.findById(paper._id)
-            .populate('author', 'name email')
-            .select('-filePath');
-
-        // Notify the Secretary that the review was declined
-        try {
-            const secretaries = await User.find({ role: 'Secretary' });
-            for (const sec of secretaries) {
-                sendEmail({
-                    to: sec.email,
-                    subject: `Review Assignment Declined: ${paper.title}`,
-                    text: `Hello ${sec.name},\n\nAn assigned reviewer has declined to review the paper titled "${paper.title}".\n\nPlease assign a new reviewer.\n\nThank you,\nCMT System`,
-                    html: `<p>Hello ${sec.name},</p><p>An assigned reviewer has declined to review the paper titled <strong>"${paper.title}"</strong>.</p><p>Please assign a new reviewer.</p><p>Thank you,<br/>CMT System</p>`
-                });
+        const remaining = await Review.countDocuments({ paper: req.params.id });
+        if (remaining === 0) {
+            const paper = await Paper.findById(req.params.id);
+            if (paper && paper.status === 'under_review') {
+                paper.status = 'submitted';
+                await paper.save();
             }
-        } catch (mailErr) {
-            console.error('Error sending decline notification:', mailErr);
         }
-
-        res.status(200).json({
-            success: true,
-            message: 'You have successfully declined this review assignment',
-            data: { paper: updatedPaper }
-        });
+        res.status(200).json({ success: true, message: 'Declined successfully' });
     } catch (error) {
-        console.error('Decline review error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while declining review assignment',
-            error: error.message
-        });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
-}
+};
 
 module.exports = {
     uploadPaper,

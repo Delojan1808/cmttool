@@ -1,58 +1,51 @@
 const mongoose = require('mongoose');
+const { Schema, model } = mongoose;
 
-const conferenceSchema = new mongoose.Schema(
+const ConferenceSchema = new Schema(
     {
-        title: {
-            type: String,
-            required: [true, 'Conference title is required'],
-            trim: true,
-            maxlength: [200, 'Title cannot exceed 200 characters']
-        },
-        professionalFields: {
-            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProfessionalField' }],
-            required: [true, 'At least one professional field is required'],
-            validate: {
-                validator: function (v) {
-                    return v && v.length > 0;
-                },
-                message: 'Please provide at least one professional field'
-            }
-        },
-        submissionDeadline: {
-            type: Date,
-            required: [true, 'Submission deadline is required']
-        },
-        conferenceDate: {
-            type: Date,
-            required: [true, 'Conference date is required']
-        },
-        sessions: [
-            {
-                name: {
-                    type: String,
-                    required: true
-                },
-                startTime: Date,
-                endTime: Date,
-                papers: [
-                    {
-                        type: mongoose.Schema.Types.ObjectId,
-                        ref: 'Paper'
-                    }
-                ]
-            }
-        ],
+        title: { type: String, required: true },
+        acronym: String,
+        description: String,
+
+        startDate: Date,
+        endDate: Date,
+
+        submissionDeadline: Date,
+        reviewDeadline: Date,
+
+        fields: [{
+            type: Schema.Types.ObjectId,
+            ref: "ProfessionalField"
+        }],
+
         createdBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        }
+            type: Schema.Types.ObjectId,
+            ref: "User"
+        },
+
+        status: {
+            type: String,
+            enum: [
+                "upcoming",
+                "submission_open",
+                "reviewing",
+                "decision_made",
+                "completed"
+            ],
+            default: "upcoming"
+        },
+
+        sessions: [{
+            title: String,
+            scheduledTime: Date,
+            papers: [{
+                type: Schema.Types.ObjectId,
+                ref: "Paper"
+            }]
+        }]
     },
-    {
-        timestamps: true
-    }
+    { timestamps: true }
 );
 
-const Conference = mongoose.model('Conference', conferenceSchema);
-
+const Conference = model("Conference", ConferenceSchema);
 module.exports = Conference;

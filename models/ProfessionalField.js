@@ -1,25 +1,23 @@
 const mongoose = require('mongoose');
+const { Schema, model } = mongoose;
 
-const professionalFieldSchema = new mongoose.Schema(
+const ProfessionalFieldSchema = new Schema(
     {
-        name: {
+        fieldName: {
             type: String,
-            required: [true, 'Field name is required'],
-            unique: true,
-            trim: true,
-            maxlength: [100, 'Field name cannot exceed 100 characters']
+            required: true,
+            unique: true
         },
-        subEditor: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            default: null
-        }
+
+        description: String,
+
+        subEditors: [{
+            type: Schema.Types.ObjectId,
+            ref: "User"
+        }]
     },
-    {
-        timestamps: true
-    }
+    { timestamps: true }
 );
 
-const ProfessionalField = mongoose.model('ProfessionalField', professionalFieldSchema);
-
+const ProfessionalField = model("ProfessionalField", ProfessionalFieldSchema);
 module.exports = ProfessionalField;

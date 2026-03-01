@@ -7,24 +7,24 @@ const mongoose = require('mongoose');
 // @access  Private (Secretary only)
 exports.createConference = async (req, res) => {
     try {
-        const { title, professionalFields, submissionDeadline, conferenceDate } = req.body;
+        const { title, acronym, description, startDate, endDate, submissionDeadline, reviewDeadline, fields } = req.body;
 
         // Basic validation
-        if (!title || !professionalFields || !submissionDeadline || !conferenceDate) {
+        if (!title || !fields || !submissionDeadline) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields'
+                message: 'Please provide required fields: title, fields, and submissionDeadline'
             });
         }
 
         // Resolve field names or IDs to ObjectIds
-        const fieldArray = Array.isArray(professionalFields) ? professionalFields : [professionalFields];
+        const fieldArray = Array.isArray(fields) ? fields : [fields];
         const fieldIds = [];
         for (const f of fieldArray) {
             if (mongoose.Types.ObjectId.isValid(f)) {
                 fieldIds.push(new mongoose.Types.ObjectId(f));
             } else {
-                const fieldDoc = await ProfessionalField.findOne({ name: f });
+                const fieldDoc = await ProfessionalField.findOne({ fieldName: f });
                 if (!fieldDoc) {
                     return res.status(400).json({ success: false, message: `Professional field "${f}" not found` });
                 }
@@ -49,15 +49,19 @@ exports.createConference = async (req, res) => {
 
         const conference = await Conference.create({
             title,
-            professionalFields: fieldIds,
+            acronym,
+            description,
+            startDate,
+            endDate,
             submissionDeadline,
-            conferenceDate,
+            reviewDeadline,
+            fields: fieldIds,
             createdBy: req.user._id
         });
 
         // Return with populated fields
         const populated = await Conference.findById(conference._id)
-            .populate('professionalFields', 'name')
+            .populate('fields', 'fieldName')
             .populate('createdBy', 'name email');
 
         res.status(201).json({
@@ -80,7 +84,7 @@ exports.createConference = async (req, res) => {
 exports.getAllConferences = async (req, res) => {
     try {
         const conferences = await Conference.find()
-            .populate('professionalFields', 'name')
+            .populate('fields', 'fieldName')
             .populate('createdBy', 'name email')
             .sort({ createdAt: -1 });
 
@@ -112,39 +116,30 @@ exports.updateConference = async (req, res) => {
             });
         }
 
-        // If professionalFields is being updated, resolve names → ObjectIds
-        if (req.body.professionalFields) {
-            const fieldArray = Array.isArray(req.body.professionalFields)
-                ? req.body.professionalFields
-                : [req.body.professionalFields];
+        // If fields is being updated, resolve names → ObjectIds
+        if (req.body.fields) {
+            const fieldArray = Array.isArray(req.body.fields)
+                ? req.body.fields
+                : [req.body.fields];
             const fieldIds = [];
             for (const f of fieldArray) {
                 if (mongoose.Types.ObjectId.isValid(f)) {
                     fieldIds.push(new mongoose.Types.ObjectId(f));
                 } else {
-                    const fieldDoc = await ProfessionalField.findOne({ name: f });
+                    const fieldDoc = await ProfessionalField.findOne({ fieldName: f });
                     if (!fieldDoc) {
                         return res.status(400).json({ success: false, message: `Professional field "${f}" not found` });
                     }
                     fieldIds.push(fieldDoc._id);
                 }
             }
-            req.body.professionalFields = fieldIds;
-        }
-
-        // Validate dates if they are being updated
-        if (req.body.submissionDeadline || req.body.conferenceDate) {
-            const subDeadline = new Date(req.body.submissionDeadline || conference.submissionDeadline);
-            const confDate = new Date(req.body.conferenceDate || conference.conferenceDate);
-            if (confDate <= subDeadline) {
-                return res.status(400).json({ success: false, message: 'Conference date must be after the submission deadline.' });
-            }
+            req.body.fields = fieldIds;
         }
 
         conference = await Conference.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
-        }).populate('professionalFields', 'name');
+        }).populate('fields', 'fieldName');
 
         res.status(200).json({
             success: true,
@@ -200,12 +195,12 @@ exports.addSession = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Conference not found' });
         }
 
-        const { name, startTime, endTime } = req.body;
-        if (!name) {
-            return res.status(400).json({ success: false, message: 'Session name is required' });
+        const { title, scheduledTime } = req.body;
+        if (!title) {
+            return res.status(400).json({ success: false, message: 'Session title is required' });
         }
 
-        conference.sessions.push({ name, startTime, endTime, papers: [] });
+        conference.sessions.push({ title, scheduledTime, papers: [] });
         await conference.save();
 
         res.status(201).json({ success: true, data: conference });

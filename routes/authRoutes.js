@@ -7,7 +7,10 @@ const {
     logout,
     getProfile,
     createUser,
-    getSubEditors
+    getSubEditors,
+    getSecretaryUsers,
+    updateUser,
+    deleteUser
 } = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/roleMiddleware');
@@ -99,6 +102,30 @@ router.get(
     authMiddleware,
     requireRole('Editor'),
     getSubEditors
+);
+
+// Route for Secretary to fetch users under their conferences
+router.get(
+    '/secretary-users',
+    authMiddleware,
+    requireRole('Secretary'),
+    getSecretaryUsers
+);
+
+// Route for Secretary to update a user
+router.put(
+    '/admin/users/:id',
+    authMiddleware,
+    requireRole('Secretary'),
+    updateUser
+);
+
+// Route for Secretary to delete a user
+router.delete(
+    '/admin/users/:id',
+    authMiddleware,
+    requireRole('Secretary'),
+    deleteUser
 );
 
 module.exports = router;

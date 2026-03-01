@@ -1,5 +1,7 @@
 const passport = require('passport');
 const User = require('../models/User');
+const Conference = require('../models/Conference');
+const Paper = require('../models/Paper');
 const { validationResult } = require('express-validator');
 const { sendEmail } = require('../utils/emailService');
 
@@ -33,8 +35,8 @@ const register = async (req, res, next) => {
             name,
             email,
             password,
-            role: 'Author', // Always Author for public registration
-            professionalField
+            roles: ['Author'], // Always Author for public registration
+            professionalFields: professionalField ? [professionalField] : []
         });
 
         // Send Welcome Email asynchronously
@@ -58,8 +60,8 @@ const register = async (req, res, next) => {
                         id: user._id,
                         name: user.name,
                         email: user.email,
-                        role: user.role,
-                        professionalField: user.professionalField,
+                        roles: user.roles,
+                        professionalFields: user.professionalFields,
                         createdAt: user.createdAt
                     }
                 }
@@ -118,8 +120,8 @@ const login = (req, res, next) => {
                         id: user._id,
                         name: user.name,
                         email: user.email,
-                        role: user.role,
-                        professionalField: user.professionalField,
+                        roles: user.roles,
+                        professionalFields: user.professionalFields,
                         createdAt: user.createdAt
                     }
                 }
@@ -171,8 +173,8 @@ const getProfile = async (req, res) => {
                     id: user._id,
                     name: user.name,
                     email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
+                    roles: user.roles,
+                    professionalFields: user.professionalFields,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt
                 }
@@ -186,6 +188,14 @@ const getProfile = async (req, res) => {
             error: error.message
         });
     }
+};
+
+// Helper: detect conflicting role combinations (Author cannot mix with academic staff)
+const STAFF_ROLES = ['Editor', 'Reviewer', 'SubEditor', 'Sub Editor', 'Secretary'];
+const hasConflictingRoles = (roles) => {
+    const hasAuthor = roles.includes('Author');
+    const hasStaff = roles.some(r => STAFF_ROLES.includes(r));
+    return hasAuthor && hasStaff;
 };
 
 // @desc    Create user account (Admin/Secretary only)
@@ -210,6 +220,14 @@ const createUser = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'Admins can only create Editor, Reviewer, or Sub Editor accounts'
+            });
+        }
+
+        // Prevent Author + staff role conflict
+        if (hasConflictingRoles([role])) {
+            return res.status(400).json({
+                success: false,
+                message: 'A user cannot be both an Author and a staff role (Reviewer/Editor/SubEditor). These roles conflict.'
             });
         }
 
@@ -242,8 +260,8 @@ const createUser = async (req, res) => {
             name,
             email,
             password,
-            role,
-            ...(professionalField && { professionalField })
+            roles: [role],
+            professionalFields: professionalField ? [professionalField] : []
         });
 
         // Send Notification Email asynchronously
@@ -262,8 +280,8 @@ const createUser = async (req, res) => {
                     id: user._id,
                     name: user.name,
                     email: user.email,
-                    role: user.role,
-                    professionalField: user.professionalField,
+                    roles: user.roles,
+                    professionalFields: user.professionalFields,
                     createdAt: user.createdAt
                 }
             }
@@ -283,7 +301,7 @@ const createUser = async (req, res) => {
 // @access  Private (Editor)
 const getSubEditors = async (req, res) => {
     try {
-        const subEditors = await User.find({ role: 'Sub Editor' }).select('name email');
+        const subEditors = await User.find({ roles: 'Sub Editor' }).select('name email');
         res.status(200).json({
             success: true,
             data: { subEditors }
@@ -298,11 +316,153 @@ const getSubEditors = async (req, res) => {
     }
 };
 
+// @desc    Get all users under conferences created by the Secretary
+// @route   GET /api/auth/secretary-users
+// @access  Private (Secretary)
+const getSecretaryUsers = async (req, res) => {
+    try {
+        // Find conferences created by this secretary
+        const conferences = await Conference.find({ createdBy: req.user._id });
+        const conferenceIds = conferences.map(c => c._id);
+        const conferenceFields = conferences.flatMap(c => c.fields);
+
+        // Find papers submitted to these conferences
+        const papers = await Paper.find({ conference: { $in: conferenceIds } });
+
+        const userIds = new Set();
+
+        // Extract authors and assigned reviewers from the papers
+        papers.forEach(p => {
+            if (p.authors) {
+                p.authors.forEach(authorId => userIds.add(authorId.toString()));
+            }
+            if (p.assignedReviewers) {
+                p.assignedReviewers.forEach(reviewerId => userIds.add(reviewerId.toString()));
+            }
+        });
+
+        // Find Reviewers / SubEditors whose professional fields match the conference fields
+        const relatedStaff = await User.find({
+            professionalFields: { $in: conferenceFields },
+            roles: { $in: ['Reviewer', 'SubEditor'] }
+        }).select('_id');
+
+        relatedStaff.forEach(staff => userIds.add(staff._id.toString()));
+
+        // Always include all Editors — they have no professional fields so they won't
+        // match the field filter above, but they are always relevant to the conferences
+        const editors = await User.find({ roles: 'Editor' }).select('_id');
+        editors.forEach(e => userIds.add(e._id.toString()));
+
+
+        // Fetch full details of these unique users
+        const users = await User.find({
+            _id: { $in: Array.from(userIds) }
+        }).select('-password').populate('professionalFields', 'fieldName');
+
+        res.status(200).json({
+            success: true,
+            data: { users }
+        });
+    } catch (error) {
+        console.error('Get secretary users error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching users',
+            error: error.message
+        });
+    }
+};
+
+// @desc    Update user details (Admin/Secretary only)
+// @route   PUT /api/auth/admin/users/:id
+// @access  Private (Secretary only)
+const updateUser = async (req, res) => {
+    try {
+        const { name, email, roles, professionalFields, isActive } = req.body;
+
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Prevent Secretary from modifying other Secretaries
+        if (user.roles.includes('Secretary') && req.user._id.toString() !== user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Cannot modify other Secretary accounts' });
+        }
+
+        // Validate role conflict before applying
+        const incomingRoles = roles || user.roles.toObject?.() || user.roles;
+        if (hasConflictingRoles(incomingRoles)) {
+            return res.status(400).json({
+                success: false,
+                message: 'A user cannot be both an Author and a staff role (Reviewer/Editor/SubEditor). These roles conflict.'
+            });
+        }
+
+        // Build update object with only the provided fields
+        // Normalise 'Sub Editor' (with space) → 'SubEditor' since findByIdAndUpdate bypasses pre-save hooks
+        const normaliseRoles = (arr) => arr.map(r => r === 'Sub Editor' ? 'SubEditor' : r);
+        const updateFields = {};
+        if (name) updateFields.name = name;
+        if (email) updateFields.email = email;
+        if (roles) updateFields.roles = normaliseRoles(roles);
+        if (professionalFields) updateFields.professionalFields = professionalFields;
+        if (typeof isActive === 'boolean') updateFields.isActive = isActive;
+
+        // Use findByIdAndUpdate to avoid triggering the password `required` validator
+        const updated = await User.findByIdAndUpdate(
+            req.params.id,
+            { $set: updateFields },
+            { new: true, runValidators: true }
+        ).select('-password').populate('professionalFields', 'fieldName');
+
+        res.status(200).json({
+            success: true,
+            message: 'User updated successfully',
+            data: { user: updated }
+        });
+    } catch (error) {
+        console.error('Update user error:', error);
+        res.status(500).json({ success: false, message: 'Server error updating user', error: error.message });
+    }
+};
+
+
+
+// @desc    Delete user account (Admin/Secretary only)
+// @route   DELETE /api/auth/admin/users/:id
+// @access  Private (Secretary only)
+const deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (user.roles.includes('Secretary')) {
+            return res.status(403).json({ success: false, message: 'Cannot delete Secretary accounts' });
+        }
+
+        await User.findByIdAndDelete(req.params.id);
+
+        res.status(200).json({ success: true, message: 'User deleted successfully' });
+    } catch (error) {
+        console.error('Delete user error:', error);
+        res.status(500).json({ success: false, message: 'Server error deleting user', error: error.message });
+    }
+};
+
 module.exports = {
     register,
     login,
     logout,
     getProfile,
     createUser,
-    getSubEditors
+    getSubEditors,
+    getSecretaryUsers,
+    updateUser,
+    deleteUser
 };

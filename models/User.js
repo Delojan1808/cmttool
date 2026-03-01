@@ -1,61 +1,73 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema(
+const { Schema, model } = mongoose;
+
+const UserSchema = new Schema(
     {
-        name: {
-            type: String,
-            required: [true, 'Name is required'],
-            trim: true,
-            minlength: [2, 'Name must be at least 2 characters long'],
-            maxlength: [100, 'Name cannot exceed 100 characters']
-        },
+        name: { type: String, required: true },
+
         email: {
             type: String,
-            required: [true, 'Email is required'],
+            required: true,
             unique: true,
             lowercase: true,
-            trim: true,
             match: [
                 /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
                 'Please provide a valid email address'
             ]
         },
+
         password: {
             type: String,
-            required: [true, 'Password is required'],
-            minlength: [6, 'Password must be at least 6 characters long'],
-            select: false // Don't return password by default in queries
-        },
-        role: {
-            type: String,
-            default: 'Author', // Default role for public registration
-            enum: {
-                values: ['Secretary', 'Author', 'Reviewer', 'Editor', 'Sub Editor'],
-                message: '{VALUE} is not a valid role'
-            }
+            required: true,
+            select: false
         },
 
-        // Professional field — required for Author, Reviewer, Sub Editor
-        // NOT applicable to Editor or Secretary
-        // The required/forbidden-per-role rules are enforced in the controller.
-        professionalField: {
-            type: String
-            // Removed enum constraint to allow dynamic values from the ProfessionalField collection
+        roles: [{
+            type: String,
+            enum: [
+                "Author",
+                "Reviewer",
+                "Editor",
+                "Secretary",
+                "SubEditor",
+                "Sub Editor"   // alias — normalised to SubEditor by pre-save hook
+            ]
+        }],
+
+        professionalFields: [{
+            type: Schema.Types.ObjectId,
+            ref: "ProfessionalField"
+        }],
+
+        affiliation: String,
+        country: String,
+
+        isActive: {
+            type: Boolean,
+            default: true
         }
     },
-    {
-        timestamps: true // Automatically adds createdAt and updatedAt fields
-    }
+    { timestamps: true }
 );
 
+
+
+
+// Normalise role aliases before saving ('Sub Editor' → 'SubEditor')
+UserSchema.pre('save', function (next) {
+    if (this.isModified('roles')) {
+        this.roles = this.roles.map(r => r === 'Sub Editor' ? 'SubEditor' : r);
+    }
+    next();
+});
+
 // Hash password before saving
-userSchema.pre('save', async function (next) {
-    // Only hash the password if it has been modified (or is new)
+UserSchema.pre('save', async function (next) {
     if (!this.isModified('password')) {
         return next();
     }
-
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
@@ -66,17 +78,16 @@ userSchema.pre('save', async function (next) {
 });
 
 // Method to compare entered password with hashed password
-userSchema.methods.comparePassword = async function (enteredPassword) {
+UserSchema.methods.comparePassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // Method to get user data without password
-userSchema.methods.toJSON = function () {
+UserSchema.methods.toJSON = function () {
     const user = this.toObject();
     delete user.password;
     return user;
 };
 
-const User = mongoose.model('User', userSchema);
-
+const User = model("User", UserSchema);
 module.exports = User;

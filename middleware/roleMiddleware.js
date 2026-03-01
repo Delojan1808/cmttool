@@ -9,8 +9,11 @@ const requireRole = (...allowedRoles) => {
             });
         }
 
-        // Check if user's role is in the allowed roles
-        if (!allowedRoles.includes(req.user.role)) {
+        // Check if user's roles intersect with the allowed roles
+        const userRoles = req.user.roles || [];
+        const hasValidRole = userRoles.some(role => allowedRoles.includes(role));
+
+        if (!hasValidRole) {
             return res.status(403).json({
                 success: false,
                 message: `Access denied. Required role(s): ${allowedRoles.join(', ')}`
