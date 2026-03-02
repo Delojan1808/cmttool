@@ -138,7 +138,7 @@ const getAssignedPapers = async (req, res) => {
 
 // @desc    Get all papers (Editor/Secretary only)
 // @route   GET /api/papers
-// @access  Private (Editor, Sub Editor, Secretary)
+// @access  Private (Editor, SubEditor, Secretary)
 const getAllPapers = async (req, res) => {
     try {
         const { status, field, author } = req.query;
@@ -148,9 +148,8 @@ const getAllPapers = async (req, res) => {
         if (field) filter.field = field;
         if (author) filter.authors = author;
 
-        if (req.user.roles.includes('Sub Editor')) {
-            const assignedFields = await ProfessionalField.find({ subEditors: req.user._id });
-            const allowedIds = assignedFields.map(f => f._id);
+        if (req.user.roles.includes('SubEditor')) {
+            const allowedIds = req.user.professionalFields || [];
 
             if (field) {
                 const reqField = await ProfessionalField.findOne({ fieldName: field });
@@ -205,7 +204,7 @@ const getPaperById = async (req, res) => {
 
         const isAuthor = paper.authors.some(a => a._id.toString() === req.user._id.toString());
         const isAssigned = paper.assignedReviewers.some(r => r._id.toString() === req.user._id.toString());
-        const hasElevatedPrivilege = req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role));
+        const hasElevatedPrivilege = req.user.roles.some(role => ['Secretary', 'Editor', 'SubEditor'].includes(role));
 
         if (!isAuthor && !isAssigned && !hasElevatedPrivilege) {
             return res.status(403).json({ success: false, message: 'You do not have permission to view this paper' });
@@ -315,7 +314,7 @@ const downloadPaper = async (req, res) => {
         const reviews = await Review.find({ paper: paper._id });
         const isAssigned = reviews.some(r => r.reviewer.toString() === req.user._id.toString());
         const isAuthor = paper.authors.includes(req.user._id);
-        const hasElevated = req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role));
+        const hasElevated = req.user.roles.some(role => ['Secretary', 'Editor', 'SubEditor'].includes(role));
 
         if (!isAuthor && !isAssigned && !hasElevated) {
             return res.status(403).json({ success: false, message: 'Permission denied' });
@@ -342,7 +341,7 @@ const getReviewers = async (req, res) => {
         const query = { roles: 'Reviewer' };
         if (req.query.field) query.professionalFields = req.query.field;
 
-        const reviewers = await User.find(query).select('name email professionalFields');
+        const reviewers = await User.find(query).select('name email professionalFields').populate('professionalFields', 'fieldName');
         res.status(200).json({ success: true, count: reviewers.length, data: { reviewers } });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
@@ -351,10 +350,10 @@ const getReviewers = async (req, res) => {
 
 // @desc    Assign a reviewer to a paper
 // @route   PUT /api/papers/:id/assign-reviewer
-// @access  Private (Secretary, Editor)
+// @access  Private (Secretary, Editor, SubEditor)
 const assignReviewer = async (req, res) => {
     try {
-        if (!req.user.roles.some(role => ['Secretary', 'Editor', 'Sub Editor'].includes(role))) {
+        if (!req.user.roles.some(role => ['Secretary', 'Editor', 'SubEditor'].includes(role))) {
             return res.status(403).json({ success: false, message: 'You are not authorized to assign reviewers' });
         }
 
@@ -424,10 +423,10 @@ const unassignReviewer = async (req, res) => {
 
 // @desc    Update final decision status of a paper (Accept/Reject)
 // @route   PUT /api/papers/:id/status
-// @access  Private (Editor, Sub Editor)
+// @access  Private (Editor, SubEditor)
 const updatePaperStatus = async (req, res) => {
     try {
-        if (!req.user.roles.some(role => ['Editor', 'Sub Editor'].includes(role))) {
+        if (!req.user.roles.some(role => ['Editor', 'SubEditor'].includes(role))) {
             return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
@@ -435,7 +434,7 @@ const updatePaperStatus = async (req, res) => {
         const paper = await Paper.findById(req.params.id).populate('authors');
         if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
 
-        if (req.user.roles.includes('Sub Editor') && !req.user.roles.includes('Editor')) {
+        if (req.user.roles.includes('SubEditor') && !req.user.roles.includes('Editor')) {
             const field = await ProfessionalField.findOne({ _id: paper.field, subEditors: req.user._id });
             if (!field) return res.status(403).json({ success: false, message: "Not assigned to this field" });
         }

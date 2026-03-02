@@ -191,7 +191,7 @@ const getProfile = async (req, res) => {
 };
 
 // Helper: detect conflicting role combinations (Author cannot mix with academic staff)
-const STAFF_ROLES = ['Editor', 'Reviewer', 'SubEditor', 'Sub Editor', 'Secretary'];
+const STAFF_ROLES = ['Editor', 'Reviewer', 'SubEditor', 'Secretary'];
 const hasConflictingRoles = (roles) => {
     const hasAuthor = roles.includes('Author');
     const hasStaff = roles.some(r => STAFF_ROLES.includes(r));
@@ -215,11 +215,11 @@ const createUser = async (req, res) => {
         const { name, email, password, role, professionalField } = req.body;
 
         // Only allow Secretary to create Editor, Reviewer, and Sub Editor
-        const allowedRoles = ['Editor', 'Reviewer', 'Sub Editor'];
+        const allowedRoles = ['Editor', 'Reviewer', 'SubEditor'];
         if (!allowedRoles.includes(role)) {
             return res.status(400).json({
                 success: false,
-                message: 'Admins can only create Editor, Reviewer, or Sub Editor accounts'
+                message: 'Admins can only create Editor, Reviewer, or SubEditor accounts'
             });
         }
 
@@ -231,12 +231,12 @@ const createUser = async (req, res) => {
             });
         }
 
-        // professionalField is required for Reviewer / Sub Editor but NOT for Editor
-        const rolesRequiringField = ['Reviewer', 'Sub Editor'];
+        // professionalField is required for Reviewer / SubEditor but NOT for Editor
+        const rolesRequiringField = ['Reviewer', 'SubEditor'];
         if (rolesRequiringField.includes(role) && !professionalField) {
             return res.status(400).json({
                 success: false,
-                message: 'Professional field is required for Reviewer and Sub Editor accounts'
+                message: 'Professional field is required for Reviewer and SubEditor accounts'
             });
         }
         if (role === 'Editor' && professionalField) {
@@ -301,7 +301,7 @@ const createUser = async (req, res) => {
 // @access  Private (Editor)
 const getSubEditors = async (req, res) => {
     try {
-        const subEditors = await User.find({ roles: 'Sub Editor' }).select('name email');
+        const subEditors = await User.find({ roles: 'SubEditor' }).select('name email');
         res.status(200).json({
             success: true,
             data: { subEditors }
@@ -403,7 +403,7 @@ const updateUser = async (req, res) => {
 
         // Build update object with only the provided fields
         // Normalise 'Sub Editor' (with space) → 'SubEditor' since findByIdAndUpdate bypasses pre-save hooks
-        const normaliseRoles = (arr) => arr.map(r => r === 'Sub Editor' ? 'SubEditor' : r);
+        const normaliseRoles = (arr) => arr.map(r => (r === 'Sub Editor' || r === 'SubEditor') ? 'SubEditor' : r);
         const updateFields = {};
         if (name) updateFields.name = name;
         if (email) updateFields.email = email;

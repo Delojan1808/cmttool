@@ -58,6 +58,7 @@ router.post(
     '/upload',
     authMiddleware,
     upload.single('pdf'),
+    paperValidation,
     uploadPaper
 );
 
@@ -72,20 +73,20 @@ router.get(
     getAssignedPapers
 );
 
-// Get all users with Reviewer role (Secretary, Editor, Sub Editor)
+// Get all users with Reviewer role (Secretary, Editor, SubEditor)
 // NOTE: Must be registered before /:id to avoid 'reviewers' being matched as an ID
 router.get(
     '/reviewers',
     authMiddleware,
-    requireRole('Secretary', 'Editor', 'Sub Editor'),
+    requireRole('Secretary', 'Editor', 'SubEditor'),
     getReviewers
 );
 
-// Get all papers (Editor, Sub Editor, Secretary only)
+// Get all papers (Editor, SubEditor, Secretary only)
 router.get(
     '/',
     authMiddleware,
-    requireRole('Editor', 'Sub Editor', 'Secretary'),
+    requireRole('Editor', 'SubEditor', 'Secretary'),
     getAllPapers
 );
 
@@ -94,7 +95,7 @@ router.get('/:id', authMiddleware, getPaperById);
 
 // Update paper metadata (Author only - permission checked in controller)
 // Added upload middleware to support optional re-upload of revisions/camera-ready PDFs
-router.put('/:id', authMiddleware, upload.single('pdf'), updatePaper);
+router.put('/:id', authMiddleware, upload.single('pdf'), paperValidation, updatePaper);
 
 // Decline a review assignment (Reviewer only)
 router.put(
@@ -104,30 +105,30 @@ router.put(
     declineReview
 );
 
-// Assign a reviewer to a paper (Secretary, Editor, Sub Editor)
+// Assign a reviewer to a paper (Secretary, Editor, SubEditor)
 router.put(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary', 'Editor', 'Sub Editor'),
+    requireRole('Secretary', 'Editor', 'SubEditor'),
     assignReviewer
 );
 
-// Update paper status (Editor, Sub Editor only)
+// Update paper status (Editor, SubEditor only)
 router.put(
     '/:id/status',
     authMiddleware,
-    requireRole('Editor', 'Sub Editor'),
+    requireRole('Editor', 'SubEditor'),
     updatePaperStatus
 );
 
 // Delete paper (Author or Secretary - permission checked in controller)
 router.delete('/:id', authMiddleware, deletePaper);
 
-// Unassign reviewer from a paper (Secretary, Editor, Sub Editor)
+// Unassign reviewer from a paper (Secretary, Editor, SubEditor)
 router.delete(
     '/:id/assign-reviewer',
     authMiddleware,
-    requireRole('Secretary', 'Editor', 'Sub Editor'),
+    requireRole('Secretary', 'Editor', 'SubEditor'),
     unassignReviewer
 );
 

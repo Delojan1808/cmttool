@@ -58,11 +58,11 @@ const createUserValidation = [
     body('role')
         .notEmpty()
         .withMessage('Role is required')
-        .isIn(['Editor', 'Reviewer', 'Sub Editor'])
-        .withMessage('Invalid role. Allowed roles: Editor, Reviewer, Sub Editor'),
+        .isIn(['Editor', 'Reviewer', 'SubEditor'])
+        .withMessage('Invalid role. Allowed roles: Editor, Reviewer, SubEditor'),
     // professionalField required for Reviewer & Sub Editor; must be absent for Editor
     body('professionalField')
-        .if(body('role').isIn(['Reviewer', 'Sub Editor']))
+        .if(body('role').isIn(['Reviewer', 'SubEditor']))
         .notEmpty()
         .withMessage('Professional field is required for Reviewer and Sub Editor')
 ];

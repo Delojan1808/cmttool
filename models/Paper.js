@@ -38,6 +38,7 @@ const PaperSchema = new Schema(
             enum: [
                 "submitted",
                 "under_review",
+                "reviewed",
                 "revision_required",
                 "accepted",
                 "rejected"

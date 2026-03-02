@@ -95,7 +95,7 @@ const getReviewsForPaper = async (req, res) => {
 
         const isAssigned = reviews.some(r => r.reviewer._id.toString() === req.user._id.toString());
         const isAuthor = paper.authors.includes(req.user._id);
-        const hasElevatedPrivilege = req.user.roles.some(role => ['Editor', 'Sub Editor', 'Secretary'].includes(role));
+        const hasElevatedPrivilege = req.user.roles.some(role => ['Editor', 'SubEditor', 'Secretary'].includes(role));
 
         if (!isAuthor && !isAssigned && !hasElevatedPrivilege) {
             return res.status(403).json({ success: false, message: 'Not authorized to view reviews for this paper' });

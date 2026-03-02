@@ -35,7 +35,7 @@ exports.createConference = async (req, res) => {
         // Validate dates
         const now = new Date();
         const subDeadline = new Date(submissionDeadline);
-        const confDate = new Date(conferenceDate);
+        const confDate = new Date(startDate);
 
         if (subDeadline <= now) {
             return res.status(400).json({ success: false, message: 'Submission deadline must be a future date.' });
