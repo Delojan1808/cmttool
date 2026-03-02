@@ -8,6 +8,22 @@ const fs = require('fs');
 const path = require('path');
 const { sendEmail } = require('../utils/emailService');
 
+// Helper to get fully populated paper data
+const getFullPaperData = async (paperId) => {
+    const paper = await Paper.findById(paperId)
+        .populate('authors', 'name email')
+        .populate('field', 'fieldName')
+        .populate('conference', 'title startDate')
+        .select('-fileUrl')
+        .lean();
+
+    if (paper) {
+        const reviews = await Review.find({ paper: paper._id }).populate('reviewer', 'name email');
+        paper.assignedReviewers = reviews.map(r => r.reviewer);
+    }
+    return paper;
+};
+
 // @desc    Upload a new paper (PDF)
 // @route   POST /api/papers/upload
 // @access  Private (Author+)
@@ -358,7 +374,9 @@ const assignReviewer = async (req, res) => {
         }
 
         const { reviewerId } = req.body;
-        if (!reviewerId) return res.status(400).json({ success: false, message: 'reviewerId is required' });
+        if (!reviewerId) {
+            return res.status(400).json({ success: false, message: 'reviewerId is required' });
+        }
 
         const paper = await Paper.findById(req.params.id);
         if (!paper) return res.status(404).json({ success: false, message: 'Paper not found' });
@@ -384,7 +402,8 @@ const assignReviewer = async (req, res) => {
             await paper.save();
         }
 
-        res.status(200).json({ success: true, message: 'Reviewer assigned successfully' });
+        const updatedPaper = await getFullPaperData(paper._id);
+        res.status(200).json({ success: true, message: 'Reviewer assigned successfully', data: { paper: updatedPaper } });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
@@ -395,8 +414,8 @@ const assignReviewer = async (req, res) => {
 // @access  Private (Secretary, Editor)
 const unassignReviewer = async (req, res) => {
     try {
-        if (!req.user.roles.some(role => ['Secretary', 'Editor'].includes(role))) {
-            return res.status(403).json({ success: false, message: 'Only Secretary or Editor can unassign' });
+        if (!req.user.roles.some(role => ['Secretary', 'Editor', 'SubEditor'].includes(role))) {
+            return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
 
         const { reviewerId } = req.body;
@@ -415,7 +434,8 @@ const unassignReviewer = async (req, res) => {
             }
         }
 
-        res.status(200).json({ success: true, message: 'Unassigned successfully' });
+        const updatedPaper = await getFullPaperData(req.params.id);
+        res.status(200).json({ success: true, message: 'Unassigned successfully', data: { paper: updatedPaper } });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
